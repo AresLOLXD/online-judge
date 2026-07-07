@@ -15,7 +15,7 @@ class ValidateTurnstileTestCase(SimpleTestCase):
         mock_post.assert_called_once_with(
             'https://challenges.cloudflare.com/turnstile/v0/siteverify',
             data={'secret': 'test-secret', 'response': 'good-token'},
-            timeout=5,
+            timeout=5.0,
         )
 
     @patch('judge.utils.turnstile.requests.post')
@@ -37,3 +37,8 @@ class ValidateTurnstileTestCase(SimpleTestCase):
         with patch('judge.utils.turnstile.requests.post') as mock_post:
             self.assertFalse(validate_turnstile(''))
             mock_post.assert_not_called()
+
+    @patch('judge.utils.turnstile.requests.post')
+    def test_malformed_json_response_fails_closed(self, mock_post):
+        mock_post.return_value = Mock(json=Mock(side_effect=ValueError('bad json')))
+        self.assertFalse(validate_turnstile('any-token'))

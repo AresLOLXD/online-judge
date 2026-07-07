@@ -29,4 +29,8 @@ def validate_turnstile(token):
     except requests.RequestException:
         log.warning('Turnstile verification request failed', exc_info=True)
         return False
-    return bool(response.json().get('success', False))
+    try:
+        return bool(response.json().get('success', False))
+    except ValueError:
+        log.warning('Turnstile verification response was not valid JSON', exc_info=True)
+        return False

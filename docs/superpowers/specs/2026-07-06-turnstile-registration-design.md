@@ -166,3 +166,9 @@ declaración `Media.js` del widget, que se compone dentro de `{{ form.media.js }
 - `requests` ya está en `requirements.txt` y se usa en otros módulos de `judge/utils/`
   (`pwned.py`, `mathoid.py`, `pdfoid.py`, `texoid.py`); no se agrega ninguna dependencia
   nueva.
+- `TURNSTILE_SECRET_KEY` es el interruptor real: si falta, el campo no se agrega y el
+  registro queda sin protección (modo actual por defecto). Si `TURNSTILE_SECRET_KEY` está
+  pero `TURNSTILE_SITE_KEY` falta, el widget lanza `AttributeError` al renderizar (falla
+  cerrado, pero como error 500 en vez de un mensaje limpio). Ambas keys deben configurarse
+  juntas en el despliegue — mismo comportamiento que ya tiene la integración de reCAPTCHA
+  existente, que también depende únicamente de su private key para activarse.

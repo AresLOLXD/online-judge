@@ -203,6 +203,13 @@
                 {% endif %}
             {% endif %}
 
+            {% if form.turnstile %}
+                <div style="margin-top: 0.5em">{{ form.turnstile }}</div>
+                {% if form.turnstile.errors %}
+                    <div class="form-field-error">{{ form.turnstile.errors }}</div>
+                {% endif %}
+            {% endif %}
+
             <hr>
             {% if tos_url %}
                 <span class="tos-section">

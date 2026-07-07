@@ -1,9 +1,10 @@
 from unittest.mock import patch, Mock
 
+from django.forms import Widget
 from django.test import SimpleTestCase, override_settings
 import requests
 
-from judge.utils.turnstile import validate_turnstile
+from judge.utils.turnstile import validate_turnstile, TurnstileWidget
 
 
 @override_settings(TURNSTILE_SECRET_KEY='test-secret')
@@ -42,3 +43,21 @@ class ValidateTurnstileTestCase(SimpleTestCase):
     def test_malformed_json_response_fails_closed(self, mock_post):
         mock_post.return_value = Mock(json=Mock(side_effect=ValueError('bad json')))
         self.assertFalse(validate_turnstile('any-token'))
+
+
+@override_settings(TURNSTILE_SITE_KEY='test-site-key')
+class TurnstileWidgetTestCase(SimpleTestCase):
+    def test_is_a_widget(self):
+        self.assertIsInstance(TurnstileWidget(), Widget)
+
+    def test_render_includes_sitekey_and_field_name(self):
+        html = TurnstileWidget().render('turnstile', None)
+        self.assertIn('class="cf-turnstile"', html)
+        self.assertIn('data-sitekey="test-site-key"', html)
+        self.assertIn('data-response-field-name="turnstile"', html)
+
+    def test_media_declares_turnstile_script(self):
+        self.assertIn(
+            'https://challenges.cloudflare.com/turnstile/v0/api.js',
+            list(TurnstileWidget().media._js),
+        )

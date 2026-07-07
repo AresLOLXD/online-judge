@@ -2,6 +2,8 @@ import logging
 
 import requests
 from django.conf import settings
+from django.forms import Widget
+from django.utils.html import format_html
 
 log = logging.getLogger(__name__)
 
@@ -34,3 +36,15 @@ def validate_turnstile(token):
     except ValueError:
         log.warning('Turnstile verification response was not valid JSON', exc_info=True)
         return False
+
+
+class TurnstileWidget(Widget):
+    class Media:
+        js = ('https://challenges.cloudflare.com/turnstile/v0/api.js',)
+
+    def render(self, name, value, attrs=None, renderer=None):
+        return format_html(
+            '<div class="cf-turnstile" data-sitekey="{}" data-response-field-name="{}"></div>',
+            settings.TURNSTILE_SITE_KEY,
+            name,
+        )

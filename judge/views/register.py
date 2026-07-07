@@ -15,6 +15,7 @@ from judge.models import Language, Organization, Profile, TIMEZONE
 from judge.utils.mail import validate_email_domain
 from judge.utils.recaptcha import ReCaptchaField, ReCaptchaWidget
 from judge.utils.subscription import Subscription, newsletter_id
+from judge.utils.turnstile import TurnstileWidget, validate_turnstile
 from judge.widgets import Select2MultipleWidget, Select2Widget
 
 
@@ -35,6 +36,17 @@ class CustomRegistrationForm(RegistrationForm):
 
     if ReCaptchaField is not None:
         captcha = ReCaptchaField(widget=ReCaptchaWidget())
+
+    def __init__(self, *args, **kwargs):
+        super(CustomRegistrationForm, self).__init__(*args, **kwargs)
+        if hasattr(settings, 'TURNSTILE_SECRET_KEY'):
+            self.fields['turnstile'] = forms.CharField(widget=TurnstileWidget(), required=True, label='')
+
+    def clean_turnstile(self):
+        token = self.cleaned_data['turnstile']
+        if not validate_turnstile(token):
+            raise forms.ValidationError(gettext('Anti-bot verification failed. Please try again.'))
+        return token
 
     def clean_email(self):
         if User.objects.filter(email=self.cleaned_data['email']).exists():

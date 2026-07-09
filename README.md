@@ -19,6 +19,14 @@ A modern open-source online judge and contest platform system. It has been used 
 
 See it live at [dmoj.ca](https://dmoj.ca/)!
 
+> **This fork** is maintained by [AresLOLXD](https://github.com/AresLOLXD)
+> for the Olimpiada Mexicana de Informática (OMI). It ships with support
+> for the Karel programming language (via a custom judge runtime) in
+> addition to everything upstream DMOJ supports, and is deployed using
+> [AresLOLXD/dmoj-docker](https://github.com/AresLOLXD/dmoj-docker).
+> This repository is the corresponding source (AGPLv3) for that
+> deployment.
+
 ## Features
 
 * [Support for over **60 language runtimes**](https://github.com/DMOJ/judge-server#supported-platforms-and-runtimes)

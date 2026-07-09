@@ -72,3 +72,9 @@ class RegistrationTurnstileDisabledTestCase(TestCase):
         })
         self.assertEqual(response.status_code, 302)
         self.assertTrue(User.objects.filter(username='newplainuser').exists())
+
+
+class FooterSourceLinkTestCase(TestCase):
+    def test_homepage_footer_contains_source_link(self):
+        response = self.client.get(reverse('home'))
+        self.assertContains(response, 'https://github.com/AresLOLXD/online-judge')

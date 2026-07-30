@@ -16,7 +16,7 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils.html import escape, format_html
 from django.utils.safestring import mark_safe
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext as _, gettext_lazy
 from django.views.generic import DetailView
 
 from judge.highlight_code import highlight_code
@@ -29,7 +29,7 @@ from judge.views.problem import ProblemMixin
 mimetypes.init()
 mimetypes.add_type('application/x-yaml', '.yml')
 
-CUSTOM_CHECKER_CHOICE = ('custom', _('Custom (Python script)'))
+CUSTOM_CHECKER_CHOICE = ('custom', gettext_lazy('Custom (Python script)'))
 
 
 def checker_args_cleaner(self):
@@ -92,6 +92,8 @@ class ProblemDataForm(ModelForm):
         has_existing_file = bool(self.instance.checker_file) and clear_checkbox_name not in self.data
         if checker == 'custom' and not checker_file and not has_existing_file:
             raise ValidationError(_('A checker script must be uploaded when using a custom checker.'))
+        if checker != 'custom':
+            cleaned_data['checker_file'] = False
         return cleaned_data
 
     clean_checker_args = checker_args_cleaner

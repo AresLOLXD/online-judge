@@ -68,3 +68,29 @@ def check(process_output, judge_output, **kwargs):
                                instance=instance)
         self.assertFalse(form.is_valid())
         self.assertIn('checker_file', form.errors)
+
+    def test_non_custom_checker_clears_uploaded_file(self):
+        instance = ProblemData.objects.create(problem=self.problem)
+        checker_file = SimpleUploadedFile('checker.py', b"""
+def check(process_output, judge_output, **kwargs):
+    return process_output == judge_output
+""")
+        files = {'problem-data-checker_file': checker_file}
+        form = ProblemDataForm(data=self._base_post_data(checker='standard'), files=files, prefix='problem-data',
+                               instance=instance)
+        self.assertTrue(form.is_valid(), form.errors)
+        data = form.save()
+        self.assertFalse(data.checker_file)
+
+    def test_non_custom_checker_clears_existing_file(self):
+        instance = ProblemData.objects.create(problem=self.problem, checker='custom')
+        instance.checker_file.save('checker.py', SimpleUploadedFile('checker.py', b"""
+def check(process_output, judge_output, **kwargs):
+    return process_output == judge_output
+"""), save=True)
+
+        form = ProblemDataForm(data=self._base_post_data(checker='standard'), files={}, prefix='problem-data',
+                               instance=instance)
+        self.assertTrue(form.is_valid(), form.errors)
+        data = form.save()
+        self.assertFalse(data.checker_file)

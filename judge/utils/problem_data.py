@@ -30,7 +30,7 @@ DANGEROUS_CHECKER_CALLS = frozenset(('eval', 'exec', 'compile', '__import__'))
 def scan_checker_source(source):
     try:
         tree = ast.parse(source)
-    except SyntaxError as e:
+    except (SyntaxError, ValueError) as e:
         return ['invalid Python syntax: %s' % e]
 
     violations = []
@@ -91,6 +91,8 @@ class ProblemDataCompiler(object):
     def resolve_checker_name(self, checker_field):
         if checker_field != 'custom':
             return checker_field
+        if not self.data.checker_file:
+            raise ProblemDataError(_('A custom checker was selected but no checker file is attached.'))
         checker_path = split_path_first(self.data.checker_file.name)
         if len(checker_path) != 2:
             raise ProblemDataError(_('How did you corrupt the checker file path?'))

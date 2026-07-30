@@ -2,7 +2,7 @@ from django.test import SimpleTestCase, TestCase
 
 from judge.models import ProblemData
 from judge.models.tests.util import create_problem, create_problem_type, create_user
-from judge.utils.problem_data import ProblemDataCompiler, scan_checker_source
+from judge.utils.problem_data import ProblemDataCompiler, ProblemDataError, scan_checker_source
 
 
 class ScanCheckerSourceTestCase(SimpleTestCase):
@@ -60,6 +60,12 @@ def check(process_output, judge_output, **kwargs):
         self.assertEqual(len(violations), 1)
         self.assertIn('invalid Python syntax', violations[0])
 
+    def test_flags_null_byte(self):
+        source = b'def check():\x00\n    pass'
+        violations = scan_checker_source(source)
+        self.assertEqual(len(violations), 1)
+        self.assertIn('invalid Python syntax', violations[0])
+
 
 class MakeInitCustomCheckerTestCase(TestCase):
     @classmethod
@@ -87,3 +93,10 @@ class MakeInitCustomCheckerTestCase(TestCase):
         init = compiler.make_init()
 
         self.assertEqual(init['checker'], {'name': 'checker.py', 'args': {'precision': 4}})
+
+    def test_custom_checker_without_file_raises_problem_data_error(self):
+        data = ProblemData.objects.create(problem=self.problem, checker='custom')
+
+        compiler = ProblemDataCompiler(self.problem, data, cases=[], files=[])
+        with self.assertRaises(ProblemDataError):
+            compiler.make_init()

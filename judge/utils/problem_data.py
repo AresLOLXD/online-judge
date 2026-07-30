@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import re
@@ -15,6 +16,39 @@ if os.altsep:
 else:
     def split_path_first(path):
         return path.split(os.sep, 1)
+
+
+DANGEROUS_CHECKER_IMPORTS = frozenset((
+    'os', 'subprocess', 'sys', 'socket', 'shutil', 'ctypes', 'importlib',
+    'multiprocessing', 'threading', 'requests', 'urllib', 'http', 'ftplib',
+    'telnetlib', 'pty', 'pickle', 'marshal', 'code',
+))
+
+DANGEROUS_CHECKER_CALLS = frozenset(('eval', 'exec', 'compile', '__import__'))
+
+
+def scan_checker_source(source):
+    try:
+        tree = ast.parse(source)
+    except SyntaxError as e:
+        return ['invalid Python syntax: %s' % e]
+
+    violations = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split('.')[0]
+                if root in DANGEROUS_CHECKER_IMPORTS:
+                    violations.append("import '%s'" % root)
+        elif isinstance(node, ast.ImportFrom):
+            root = (node.module or '').split('.')[0]
+            if root in DANGEROUS_CHECKER_IMPORTS:
+                violations.append("import '%s'" % root)
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            if node.func.id in DANGEROUS_CHECKER_CALLS:
+                violations.append("call to '%s'" % node.func.id)
+
+    return violations
 
 
 class ProblemDataStorage(FileSystemStorage):

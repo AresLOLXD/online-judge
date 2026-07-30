@@ -9,6 +9,7 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
+from django import forms
 from django.forms import BaseModelFormSet, HiddenInput, ModelForm, NumberInput, Select, formset_factory
 from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render
@@ -19,14 +20,16 @@ from django.utils.translation import gettext as _
 from django.views.generic import DetailView
 
 from judge.highlight_code import highlight_code
-from judge.models import Problem, ProblemData, ProblemTestCase, Submission, problem_data_storage
-from judge.utils.problem_data import ProblemDataCompiler
+from judge.models import CHECKERS, Problem, ProblemData, ProblemTestCase, Submission, problem_data_storage
+from judge.utils.problem_data import ProblemDataCompiler, scan_checker_source
 from judge.utils.unicode import utf8text
 from judge.utils.views import TitleMixin, add_file_response
 from judge.views.problem import ProblemMixin
 
 mimetypes.init()
 mimetypes.add_type('application/x-yaml', '.yml')
+
+CUSTOM_CHECKER_CHOICE = ('custom', _('Custom (Python script)'))
 
 
 def checker_args_cleaner(self):
@@ -42,6 +45,9 @@ def checker_args_cleaner(self):
 
 
 class ProblemDataForm(ModelForm):
+    checker = forms.ChoiceField(choices=(('', '---------'),) + CHECKERS + (CUSTOM_CHECKER_CHOICE,),
+                                required=False)
+
     def clean_zipfile(self):
         if hasattr(self, 'zip_valid') and not self.zip_valid:
             raise ValidationError(_('Your zip file is invalid!'))
@@ -59,12 +65,49 @@ class ProblemDataForm(ModelForm):
 
         return generator
 
+    def clean_checker_file(self):
+        checker_file = self.cleaned_data['checker_file']
+        if not checker_file:
+            return checker_file
+
+        if checker_file.name == 'init.yml':
+            raise ValidationError(_('Checker file must not be named init.yml.'))
+        if not checker_file.name.endswith('.py'):
+            raise ValidationError(_('Checker file must be a Python (.py) script.'))
+
+        violations = scan_checker_source(checker_file.read())
+        checker_file.seek(0)
+        if violations:
+            raise ValidationError(
+                _('Checker script contains disallowed constructs: %s') % ', '.join(violations),
+            )
+
+        return checker_file
+
+    def clean(self):
+        cleaned_data = super().clean()
+        checker = cleaned_data.get('checker')
+        checker_file = cleaned_data.get('checker_file')
+        clear_checkbox_name = self.add_prefix('checker_file-clear')
+        has_existing_file = bool(self.instance.checker_file) and clear_checkbox_name not in self.data
+        if checker == 'custom' and not checker_file and not has_existing_file:
+            raise ValidationError(_('A checker script must be uploaded when using a custom checker.'))
+        return cleaned_data
+
     clean_checker_args = checker_args_cleaner
+
+    def _get_validation_exclusions(self):
+        # The model's `checker` field choices intentionally don't include 'custom' (that
+        # option only exists on this form, so per-testcase checkers are unaffected). Exclude
+        # it from Model.full_clean() choice validation; clean() and clean_checker_file() above
+        # already fully validate it.
+        exclusions = super()._get_validation_exclusions()
+        return set(exclusions) | {'checker'}
 
     class Meta:
         model = ProblemData
         fields = ['zipfile', 'generator', 'unicode', 'nobigmath', 'output_limit', 'output_prefix',
-                  'checker', 'checker_args']
+                  'checker', 'checker_args', 'checker_file']
         widgets = {
             'checker_args': HiddenInput,
         }

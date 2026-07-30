@@ -88,6 +88,14 @@ class ProblemDataCompiler(object):
 
         self.generator = data.generator
 
+    def resolve_checker_name(self, checker_field):
+        if checker_field != 'custom':
+            return checker_field
+        checker_path = split_path_first(self.data.checker_file.name)
+        if len(checker_path) != 2:
+            raise ProblemDataError(_('How did you corrupt the checker file path?'))
+        return checker_path[1]
+
     def make_init(self):
         cases = []
         batch = None
@@ -99,12 +107,13 @@ class ProblemDataCompiler(object):
             cases.append(batch)
 
         def make_checker(case):
+            checker_name = self.resolve_checker_name(case.checker)
             if case.checker_args:
                 return {
-                    'name': case.checker,
+                    'name': checker_name,
                     'args': json.loads(case.checker_args),
                 }
-            return case.checker
+            return checker_name
 
         for i, case in enumerate(self.cases, 1):
             if case.type == 'C':

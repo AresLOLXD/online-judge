@@ -5,11 +5,11 @@ from itertools import chain
 from typing import List
 from zipfile import BadZipfile, ZipFile
 
+from django import forms
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
-from django import forms
 from django.forms import BaseModelFormSet, HiddenInput, ModelForm, NumberInput, Select, formset_factory
 from django.http import Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, render

@@ -66,6 +66,46 @@ def check(process_output, judge_output, **kwargs):
         self.assertEqual(len(violations), 1)
         self.assertIn('invalid Python syntax', violations[0])
 
+    def test_sys_argv_and_stdin_are_allowed(self):
+        source = b"""
+import sys
+
+def check(process_output, judge_output, **kwargs):
+    return sys.argv[1] == str(sys.stdin.read())
+"""
+        self.assertEqual(scan_checker_source(source), [])
+
+    def test_sys_from_import_argv_and_stdin_are_allowed(self):
+        source = b"""
+from sys import argv, stdin
+
+def check(process_output, judge_output, **kwargs):
+    return argv[1] == str(stdin.read())
+"""
+        self.assertEqual(scan_checker_source(source), [])
+
+    def test_flags_other_sys_attribute_access(self):
+        source = b"""
+import sys
+
+def check(process_output, judge_output, **kwargs):
+    sys.exit(1)
+    return True
+"""
+        violations = scan_checker_source(source)
+        self.assertIn("use of 'sys.exit'", violations)
+
+    def test_flags_other_sys_from_import(self):
+        source = b"""
+from sys import exit
+
+def check(process_output, judge_output, **kwargs):
+    exit(1)
+    return True
+"""
+        violations = scan_checker_source(source)
+        self.assertIn("use of 'sys.exit'", violations)
+
 
 class MakeInitCustomCheckerTestCase(TestCase):
     @classmethod

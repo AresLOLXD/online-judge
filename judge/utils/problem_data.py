@@ -19,12 +19,17 @@ else:
 
 
 DANGEROUS_CHECKER_IMPORTS = frozenset((
-    'os', 'subprocess', 'sys', 'socket', 'shutil', 'ctypes', 'importlib',
+    'os', 'subprocess', 'socket', 'shutil', 'ctypes', 'importlib',
     'multiprocessing', 'threading', 'requests', 'urllib', 'http', 'ftplib',
     'telnetlib', 'pty', 'pickle', 'marshal', 'code',
 ))
 
 DANGEROUS_CHECKER_CALLS = frozenset(('eval', 'exec', 'compile', '__import__'))
+
+# `sys` is otherwise blacklisted, but checkers legitimately need it to read
+# the judge's input (sys.stdin/sys.argv) - only these two attributes are
+# allowed, everything else on sys (sys.exit, sys.settrace, ...) is flagged.
+SYS_ALLOWED_ATTRS = frozenset(('argv', 'stdin'))
 
 
 def scan_checker_source(source):
@@ -42,11 +47,18 @@ def scan_checker_source(source):
                     violations.append("import '%s'" % root)
         elif isinstance(node, ast.ImportFrom):
             root = (node.module or '').split('.')[0]
-            if root in DANGEROUS_CHECKER_IMPORTS:
+            if root == 'sys':
+                for alias in node.names:
+                    if alias.name not in SYS_ALLOWED_ATTRS:
+                        violations.append("use of 'sys.%s'" % alias.name)
+            elif root in DANGEROUS_CHECKER_IMPORTS:
                 violations.append("import '%s'" % root)
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             if node.func.id in DANGEROUS_CHECKER_CALLS:
                 violations.append("call to '%s'" % node.func.id)
+        elif (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and
+                node.value.id == 'sys' and node.attr not in SYS_ALLOWED_ATTRS):
+            violations.append("use of 'sys.%s'" % node.attr)
 
     return violations
 

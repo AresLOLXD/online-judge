@@ -126,3 +126,34 @@ class ProblemDataViewTestCase(TestCase):
         self.assertTrue(problem_data_storage.exists(data.zipfile.name))
         with open(data.zipfile.path, 'rb') as stored:
             self.assertEqual(stored.read(), second)
+
+
+@renders_pages
+class ProblemDataPageNoticesTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        create_user(username='admin', is_superuser=True, is_staff=True)
+        cls.author = create_user(username='author', user_permissions=['edit_own_problem'])
+        create_problem_type(name='type')
+        cls.problem = create_problem(code='noticeprob', types=('type',), authors=('author',))
+        cls.url = reverse('problem_data', args=[cls.problem.code])
+        cls.manage_url = reverse('problem_manage_submissions', args=[cls.problem.code])
+
+    def test_page_has_help_and_rejudge_text(self):
+        self.client.force_login(create_user(username='admin', is_superuser=True, is_staff=True))
+        response = self.client.get(self.url)
+        self.assertContains(response, 'id="data-help"')
+        self.assertContains(response, 'id="rejudge-notice"')
+
+    def test_rejudge_link_for_subs_manager(self):
+        self.client.force_login(create_user(username='admin', is_superuser=True, is_staff=True))
+        response = self.client.get(self.url)
+        self.assertContains(response, 'id="rejudge-link"')
+        self.assertContains(response, self.manage_url)
+
+    def test_no_rejudge_link_without_permission(self):
+        self.client.force_login(self.author)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="rejudge-notice"')
+        self.assertNotContains(response, 'id="rejudge-link"')

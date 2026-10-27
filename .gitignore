@@ -17,3 +17,4 @@ resources/vars.scss
 sass_processed
 .DS_Store
 .worktrees/
+.venv/

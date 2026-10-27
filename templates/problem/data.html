@@ -62,9 +62,9 @@
                 }
             }
 
-            function checker_precision($checker) {
+            function checker_precision($checker, $args) {
                 var $td = $checker.parent();
-                var $args = $td.find('input');
+                $args = $args || $td.find('input');
                 var $precision = $('<input>', {
                     type: 'number',
                     value: try_parse_json($args.val()).precision || 6,
@@ -100,7 +100,7 @@
                 handle_table_reorder();
             }
 
-            checker_precision($('#id_problem-data-checker'));
+            checker_precision($('#id_problem-data-checker'), $('#id_problem-data-checker_args'));
             toggle_checker_file($('#id_problem-data-checker'));
 
             $table.on('add-row', function (e, $tr) {

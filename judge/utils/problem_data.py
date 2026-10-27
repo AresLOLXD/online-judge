@@ -120,7 +120,8 @@ class _NoAliasSafeLoader(yaml.SafeLoader):
     # file into gigabytes of row text.
     def compose_node(self, parent, index):
         if self.check_event(yaml.AliasEvent):
-            raise ProblemDataError(_('YAML aliases (&anchor / *reference) are not supported in init.yml.'))
+            raise ProblemDataError(
+                _('YAML aliases (*reference) are not supported in init.yml; write out the repeated values.'))
         return super().compose_node(parent, index)
 
 

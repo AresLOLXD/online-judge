@@ -197,7 +197,8 @@ view and is not changed.
 
 The zip comes from an authenticated editor but is still untrusted input.
 
-- Parse with `yaml.safe_load` only.
+- Parse with a `yaml.SafeLoader` subclass (no arbitrary object construction)
+  that also rejects aliases (see below).
 - Check `ZipInfo.file_size` of `init.yml` before reading it and reject it above
   1 MiB with an error in the feedback box. **[Claude's call]** on the limit;
   a `shortcut:` comment marks it.

@@ -61,6 +61,8 @@ dev = [
     "flake8-quotes",
     "coverage",
     "pymysql",
+    # flake8-logging-format imports pkg_resources, which setuptools 81 and later no longer ships
+    "setuptools<81",
 ]
 
 [tool.uv]

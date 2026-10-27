@@ -99,7 +99,8 @@ class ProblemDataError(Exception):
 INIT_YML_NAME = 'init.yml'
 # shortcut: 1 MiB cap on the bundled init.yml, raise it if a real dataset needs a larger one.
 MAX_INIT_YML_SIZE = 1 << 20
-# shortcut: cap on cases per import (the data page formset allows 1001), raise it if a real dataset needs more.
+# shortcut: cap on cases per import and on the length of any init.yml list (the data page formset allows 1001),
+# raise it if a real dataset needs more.
 MAX_IMPORTED_CASES = 1000
 MAX_FILE_NAME_LENGTH = 100  # ProblemTestCase.input_file / output_file max_length
 
@@ -148,6 +149,8 @@ def _as_list(value):
         return []
     if not isinstance(value, list):
         raise ProblemDataError(_('Expected a list in init.yml, got: %s') % (value,))
+    if len(value) > MAX_IMPORTED_CASES:
+        raise ProblemDataError(_('init.yml contains a list with more than %d items.') % MAX_IMPORTED_CASES)
     return value
 
 

@@ -262,6 +262,23 @@ class ParseInitTestCase(SimpleTestCase):
             with self.subTest(args=args), self.assertRaises(ProblemDataError):
                 parse_init({'test_cases': [{'points': 1, 'checker': {'name': 'floats', 'args': args}}]})
 
+    def test_parse_bounds_list_length(self):
+        def parsed(count):
+            return parse_init({'test_cases': [{'in': 'a.in', 'out': 'a.out', 'points': 1,
+                                               'generator_args': ['x'] * count}]})
+
+        parsed(MAX_IMPORTED_CASES)
+        with self.assertRaises(ProblemDataError):
+            parsed(MAX_IMPORTED_CASES + 1)
+
+    def test_parse_bounds_lists_reused_by_yaml_aliases(self):
+        big = '[' + ','.join(['1'] * (MAX_IMPORTED_CASES + 1)) + ']'
+        init = yaml.safe_load('d: &d %s\ntest_cases: [{points: 1, batched: [], dependencies: *d}, '
+                              '{points: 1, batched: [], dependencies: *d}, '
+                              '{points: 1, batched: [], dependencies: *d}]' % big)
+        with self.assertRaisesMessage(ProblemDataError, 'list with more than'):
+            parse_init(init)
+
     def test_parse_caps_rows_created_by_yaml_aliases(self):
         item_count = int(MAX_IMPORTED_CASES ** 0.5) + 1
         init = yaml.safe_load('i: &i {in: a, out: b}\nb: &b {points: 1, batched: [%s]}\ntest_cases: [%s]' % (

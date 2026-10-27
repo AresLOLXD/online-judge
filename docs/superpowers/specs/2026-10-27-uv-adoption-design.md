@@ -88,6 +88,11 @@ currently fails on them is not known from the repository).
     `flake8-logging-format`, `flake8-quotes`), `coverage`, and `pymysql`
     **[my call]** (so a plain `uv sync` gives a working dev environment and the
     three message workflows, which today install `pymysql`, need nothing extra).
+    It also holds `setuptools<81`, because `flake8-logging-format` imports
+    `pkg_resources` without declaring `setuptools`, and newer setuptools no longer
+    ships it.
+- `.flake8`: `exclude` gains `./.venv`, because the list replaces flake8's built-in
+  defaults and `uv sync` creates the environment inside the checkout.
 - `.python-version` (new): `3.13`.
 - `uv.lock` (new, committed): produced by `uv lock`. It resolves the newest
   versions the constraints allow at lock time (which is also what an unpinned
@@ -95,8 +100,10 @@ currently fails on them is not known from the repository).
 - `requirements.txt`: deleted.
 - `.gitignore`: add `.venv/` if it is not already covered.
 - `README.md`: a short "Installing" section: install uv, `uv sync`,
-  `uv run python manage.py test judge`, and a note that an existing hand-made
-  `.venv` must be deleted first. Do not duplicate the docs.dmoj.ca install guide.
+  `uv run python manage.py test judge`, a note that uv silently replaces an
+  existing `.venv` built on another Python (measured), and that `compilemessages`
+  needs `--ignore=.venv` because the environment lives in the checkout. Do not
+  duplicate the docs.dmoj.ca install guide.
 
 ### CI (`.github/workflows/`)
 
@@ -104,15 +111,17 @@ All four workflows that run Python replace `actions/setup-python@v5` 3.11 plus
 `pip` with `astral-sh/setup-uv` (cache enabled, keyed by `uv.lock`) and the
 Python from `.python-version`:
 
-- `build.yml`, job `lint`: `uv sync --frozen --only-group dev`, then flake8 via
-  `uv run`.
-- `build.yml`, job `unit`: `uv sync --frozen --extra mysql`, copy
-  `.ci.settings.py`, start MySQL, `uv run coverage run --source=. manage.py test judge`
+- `build.yml`, job `lint`: `uv sync --locked --only-group dev` (`--locked`, not
+  `--frozen`, so the job fails when `pyproject.toml` and `uv.lock` disagree), then
+  flake8 via `uv run`.
+- `build.yml`, job `unit`: `uv sync --locked --extra mysql`, copy
+  `.ci.settings.py`, start MySQL, `uv run --no-sync coverage run --source=. manage.py test judge`
   and the coverage report. The manual pip cache step goes away.
 - `compilemessages.yml`, `makemessages.yml`, `updatemessages.yml`:
-  `uv sync --frozen` replaces `pip install -r requirements.txt` and
+  `uv sync --locked` replaces `pip install -r requirements.txt` and
   `pip install pymysql`; their later steps run through `uv run` where they call
-  `manage.py`.
+  `manage.py`. `compilemessages` passes `--ignore=.venv`, because Django walks the
+  whole tree and would otherwise collect the `.po` files of the installed packages.
 - The `styles` job (Node only) is untouched.
 - Pin each action to a major version tag like the existing workflows do.
 
@@ -125,10 +134,19 @@ one lands: base image `python:3.13-slim-bookworm`; install uv (for example
 `COPY --from=ghcr.io/astral-sh/uv`); replace `COPY repo/requirements.txt` +
 `pip3 install -r` with copying `repo/pyproject.toml`, `repo/uv.lock` and
 `repo/.python-version` and installing from the lock (for example
-`uv sync --frozen --no-dev` into the image's environment, or
-`uv export --frozen --no-dev` into `uv pip install`); keep the deployment-only
-packages that the Dockerfile already pins separately (`pymysql`, `mysqlclient`,
-`uwsgi`, `django-redis`, `redis`, `websocket-client`); the warning that a rebuild
+`uv export --frozen --no-dev --no-hashes --no-emit-project -o requirements.txt`
+followed by the existing `pip3 install -r requirements.txt`, the smallest change to
+the Dockerfile; `--no-hashes` is required because pip's hash-checking mode rejects
+the four VCS dependencies; or `uv sync --locked --no-dev --inexact` with
+`UV_PROJECT_ENVIRONMENT=/usr/local`, since the images start `uwsgi`, `celery` and
+`python3` from the system PATH, which a plain `uv sync` into `./.venv` is not on, and
+an exact sync of the system environment would uninstall the separately pip-installed
+`uwsgi`, `django-redis`, `redis` and `websocket-client`); keep those deployment-only
+packages that the Dockerfile already installs separately (`pymysql`, `mysqlclient`,
+`uwsgi`, `django-redis`, `redis`, `websocket-client`), and review that its own pins
+`pymysql==1.2.0` and `mysqlclient==2.2.8` differ from the lock (pymysql 1.2.3,
+mysqlclient 2.3.0); the lock's `mysql` extra and `dev` group are not installed in
+the image unless asked for; the warning that a rebuild
 from a commit without `requirements.txt` fails until this is done; and the note that
 the default `python:3.11` image must change at the same time because the lock
 requires 3.13. Creating the issue is a write to GitHub on the maintainer's
@@ -138,7 +156,7 @@ explicit instruction; the text is shown to the maintainer in the final report.
 
 1. On a clean clone, `uv sync` creates an environment on Python 3.13 with no
    errors (the `llist` C extension builds).
-2. `uv lock --check` passes; `uv sync --frozen` and `uv sync --frozen --extra mysql`
+2. `uv lock --check` passes; `uv sync --locked` and `uv sync --locked --extra mysql`
    work.
 3. `uv run python manage.py test judge` passes 163 tests with `static/jsi18n`
    present (with it absent only the three pre-existing environment errors remain,

@@ -340,6 +340,13 @@ class ImportCasesFromZipTestCase(TestCase):
         self.assertEqual(self.case_rows(), before)
         self.assertEqual(self.data.output_limit, 3)
 
+    def test_init_yml_writes_only_imported_fields(self):
+        self.data.feedback = 'unsaved'  # in-memory only; a full save would persist it
+        import_cases_from_zip(self.problem, self.data, self.make_zip_path({'init.yml': 'output_limit_length: 3'}))
+        stored = ProblemData.objects.get(pk=self.data.pk)
+        self.assertEqual((stored.output_limit, stored.feedback), (3, ''))
+        self.assertEqual(self.data.output_limit, 3)
+
     def test_no_yaml_empty_problem_registers_pairs(self):
         path = self.make_zip_path(dict.fromkeys(('10.in', '10.out', '2.in', '2.out'), 'x'))
         self.assertEqual(import_cases_from_zip(self.problem, self.data, path), [])

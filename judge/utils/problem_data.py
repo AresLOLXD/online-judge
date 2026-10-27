@@ -240,7 +240,7 @@ def pair_zip_files(names: Iterable[str]) -> Tuple[List[Tuple[str, str]], List[st
 
 def import_cases_from_zip(problem, data, zip_path: str) -> List[str]:
     """Apply a data zip to a problem and return warnings; ProblemDataError is raised before any DB change."""
-    from judge.models import ProblemTestCase
+    from judge.models import ProblemData, ProblemTestCase
 
     with ZipFile(zip_path) as zip_file:
         init = read_zip_init_yml(zip_file)
@@ -255,9 +255,11 @@ def import_cases_from_zip(problem, data, zip_path: str) -> List[str]:
             if parsed.cases is not None:
                 problem.cases.all().delete()
                 ProblemTestCase.objects.bulk_create(ProblemTestCase(dataset=problem, **case) for case in parsed.cases)
-            for field, value in parsed.settings.items():
-                setattr(data, field, value)
-            data.save()
+            if parsed.settings:
+                # queryset update: ProblemData.save() would also act on a pending zipfile replacement
+                ProblemData.objects.filter(pk=data.pk).update(**parsed.settings)
+                for field, value in parsed.settings.items():
+                    setattr(data, field, value)
         elif problem.cases.exists():
             used = {file for case in problem.cases.all() for file in (case.input_file, case.output_file)}
             unused = len(({name for pair in pairs for name in pair} | set(unpaired)) - used)

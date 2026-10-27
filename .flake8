@@ -23,3 +23,5 @@ exclude =
     ./dmoj/local_settings.py,
     # is actually a fragment to be included by settings.py
     ./.ci.settings.py,
+    # the uv-managed virtual environment
+    ./.venv,

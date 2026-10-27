@@ -25,6 +25,8 @@ requests
 django-fernet-fields @ git+https://github.com/DMOJ/django-fernet-fields.git
 pyotp
 qrcode[pil]
+# qrcode[pil] pulls Pillow in; 13.0.0 contains the October 2026 security fixes
+pillow>=13.0.0
 jsonfield @ git+https://github.com/DMOJ/jsonfield.git
 pymoss
 packaging<22

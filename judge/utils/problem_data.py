@@ -2,6 +2,9 @@ import ast
 import json
 import os
 import re
+from collections import namedtuple
+from typing import Iterable, List, Optional, Tuple
+from zipfile import ZipFile
 
 import yaml
 from django.conf import settings
@@ -89,6 +92,138 @@ class ProblemDataError(Exception):
     def __init__(self, message):
         super(ProblemDataError, self).__init__(message)
         self.message = message
+
+
+INIT_YML_NAME = 'init.yml'
+# shortcut: 1 MiB cap on the bundled init.yml, raise it if a real dataset needs a larger one.
+MAX_INIT_YML_SIZE = 1 << 20
+MAX_FILE_NAME_LENGTH = 100  # ProblemTestCase.input_file / output_file max_length
+
+ParsedInit = namedtuple('ParsedInit', 'cases settings warnings')
+
+ENTRY_KEYS = frozenset((
+    'in', 'out', 'points', 'generator_args', 'output_limit_length', 'output_prefix_length', 'checker',
+    'batched', 'dependencies',
+))
+TOP_LEVEL_KEYS = frozenset((
+    'test_cases', 'pretest_test_cases', 'output_limit_length', 'output_prefix_length', 'checker', 'hints',
+))
+
+
+def read_zip_init_yml(zip_file: ZipFile) -> Optional[dict]:
+    try:
+        info = zip_file.getinfo(INIT_YML_NAME)
+    except KeyError:
+        return None
+    if info.file_size > MAX_INIT_YML_SIZE:
+        raise ProblemDataError(_('init.yml is too large (limit: %d bytes).') % MAX_INIT_YML_SIZE)
+    try:
+        init = yaml.safe_load(zip_file.read(info))
+    except yaml.YAMLError as e:
+        raise ProblemDataError(_('init.yml could not be parsed: %s') % e)
+    if not isinstance(init, dict):
+        raise ProblemDataError(_('init.yml must be a mapping.'))
+    return init
+
+
+def _to_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise ProblemDataError(_('Expected an integer in init.yml, got: %s') % (value,))
+
+
+def _parse_checker(value, warnings):
+    """Return (name, json args) for a supported checker, else warn and return ('', '')."""
+    from judge.models.problem_data import CHECKERS
+
+    name, args = (value.get('name'), value.get('args')) if isinstance(value, dict) else (value, None)
+    if name not in [checker for checker, _label in CHECKERS]:
+        warnings.append(_('Checker %s is not supported and was ignored.') % (name,))
+        return '', ''
+    return name, json.dumps(args) if args else ''
+
+
+def _parse_entry(entry, is_pretest, warnings, unknown_keys):
+    if not isinstance(entry, dict):
+        raise ProblemDataError(_('Every test case in init.yml must be a mapping.'))
+    unknown_keys.update(str(key) for key in entry if key not in ENTRY_KEYS)
+    row = {'is_pretest': is_pretest}
+    for key, field in (('in', 'input_file'), ('out', 'output_file')):
+        row[field] = str(entry.get(key, ''))
+        if len(row[field]) > MAX_FILE_NAME_LENGTH:
+            raise ProblemDataError(_('File name is too long: %s') % row[field])
+    for key, field in (('points', 'points'), ('output_limit_length', 'output_limit'),
+                       ('output_prefix_length', 'output_prefix')):
+        row[field] = _to_int(entry[key]) if entry.get(key) is not None else None
+    row['generator_args'] = '\n'.join(map(str, entry.get('generator_args') or ()))
+    row['checker'], row['checker_args'] = _parse_checker(entry['checker'], warnings) if 'checker' in entry else ('', '')
+    return row
+
+
+def parse_init(init: dict) -> ParsedInit:
+    """Inverse of ProblemDataCompiler.make_init(): turn a bundled init.yml into form data."""
+    warnings = []
+    unknown_keys = set(map(str, init.keys() - TOP_LEVEL_KEYS))
+    cases = None
+    if 'test_cases' in init or 'pretest_test_cases' in init:
+        cases = []
+
+        def add(type, is_pretest, **fields):
+            cases.append(dict({
+                'order': len(cases) + 1, 'type': type, 'input_file': '', 'output_file': '', 'points': None,
+                'is_pretest': is_pretest, 'output_limit': None, 'output_prefix': None, 'checker': '',
+                'checker_args': '', 'generator_args': '', 'batch_dependencies': '',
+            }, **fields))
+
+        for key, is_pretest in (('pretest_test_cases', True), ('test_cases', False)):
+            for entry in init.get(key) or ():
+                row = _parse_entry(entry, is_pretest, warnings, unknown_keys)
+                if 'batched' not in entry:
+                    add('C', **row)
+                    continue
+                # shortcut: dependencies are imported as written, not renumbered; the compiler rejects invalid ones.
+                dependencies = ','.join(str(_to_int(number)) for number in entry.get('dependencies') or ())
+                add('S', **dict(row, batch_dependencies=dependencies, input_file='', output_file=''))
+                for item in entry['batched'] or ():
+                    add('C', **dict(_parse_entry(item, is_pretest, warnings, unknown_keys), points=None))
+                add('E', is_pretest)
+
+    settings = {}
+    for key, field in (('output_limit_length', 'output_limit'), ('output_prefix_length', 'output_prefix')):
+        if init.get(key) is not None:
+            settings[field] = _to_int(init[key])
+    if 'checker' in init:
+        checker, checker_args = _parse_checker(init['checker'], warnings)
+        if checker:
+            settings.update(checker=checker, checker_args=checker_args)
+    if 'hints' in init:
+        hints = init['hints'] or ()
+        settings.update(unicode='unicode' in hints, nobigmath='nobigmath' in hints)
+
+    if unknown_keys:
+        warnings.insert(0, _('Ignored init.yml keys: %s') % ', '.join(sorted(unknown_keys)))
+    return ParsedInit(cases, settings, warnings)
+
+
+def pair_zip_files(names: Iterable[str]) -> Tuple[List[Tuple[str, str]], List[str]]:
+    """Pair input files with their output file using the rule of the data page's JavaScript autofill."""
+    names = [name for name in names
+             if not name.endswith('/') and name != INIT_YML_NAME and not name.startswith('__MACOSX/')]
+    available = set(names)
+    pairs = []
+    for name in names:
+        output = re.sub(r'in(?!.*?in)', 'out', name)
+        if output != name and output in available and max(len(name), len(output)) <= MAX_FILE_NAME_LENGTH:
+            pairs.append((name, output))
+    used = {name for pair in pairs for name in pair}
+
+    def natural_key(name):
+        return len(name) > MAX_FILE_NAME_LENGTH, [int(part) if part.isdigit() else part
+                                                  for part in re.split(r'(\d+)', name)]
+
+    return (sorted(pairs, key=lambda pair: natural_key(pair[0])),
+            sorted((name for name in names if name not in used), key=natural_key))
 
 
 class ProblemDataCompiler(object):

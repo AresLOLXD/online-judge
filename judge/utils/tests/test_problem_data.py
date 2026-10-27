@@ -1,13 +1,16 @@
+import os
+import tempfile
 from io import BytesIO
 from zipfile import ZipFile
 
+import yaml
 from django.test import SimpleTestCase, TestCase
 
-from judge.models import ProblemData
+from judge.models import ProblemData, ProblemTestCase
 from judge.models.tests.util import create_problem, create_problem_type, create_user
 from judge.utils.problem_data import (
-    MAX_INIT_YML_SIZE, ParsedInit, ProblemDataCompiler, ProblemDataError, pair_zip_files, parse_init,
-    read_zip_init_yml, scan_checker_source,
+    MAX_INIT_YML_SIZE, ParsedInit, ProblemDataCompiler, ProblemDataError, import_cases_from_zip, pair_zip_files,
+    parse_init, read_zip_init_yml, scan_checker_source,
 )
 
 
@@ -169,7 +172,7 @@ class ReadZipInitYmlTestCase(SimpleTestCase):
             read_zip_init_yml(make_zip({'init.yml': 'a' * (MAX_INIT_YML_SIZE + 1)}))
 
     def test_read_rejects_non_mapping_and_invalid_yaml(self):
-        for content in ('- 1\n- 2', '', ': [\n'):
+        for content in ('- 1\n- 2', '', ': [\n', 'a: 2001-13-45'):
             with self.subTest(content=content), self.assertRaises(ProblemDataError):
                 read_zip_init_yml(make_zip({'init.yml': content}))
 
@@ -260,3 +263,120 @@ class PairZipFilesTestCase(SimpleTestCase):
                  'x.in', 'x.ans', long_name]
         self.assertEqual(pair_zip_files(names), ([('2.in', '2.out'), ('10.in', '10.out')],
                                                  ['x.ans', 'x.in', long_name]))
+
+
+CASE_FIELDS = ('order', 'type', 'input_file', 'output_file', 'generator_args', 'points', 'is_pretest',
+               'output_prefix', 'output_limit', 'checker', 'checker_args', 'batch_dependencies')
+
+
+class ImportCasesFromZipTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        create_user(username='author')
+        create_problem_type(name='type')
+        cls.problem = create_problem(code='zipimportprob', types=('type',), authors=('author',))
+        cls.data = ProblemData.objects.create(problem=cls.problem)
+
+    def make_zip_path(self, files):
+        handle, path = tempfile.mkstemp(suffix='.zip')
+        os.close(handle)
+        self.addCleanup(os.remove, path)
+        with ZipFile(path, 'w') as zip_file:
+            for name, content in files.items():
+                zip_file.writestr(name, content)
+        return path
+
+    def case_rows(self, problem=None):
+        return list((problem or self.problem).cases.order_by('order').values_list(*CASE_FIELDS))
+
+    def test_round_trip(self):
+        rows = (
+            dict(type='C', input_file='p.in', output_file='p.out', points=5, is_pretest=True),
+            dict(type='S', points=30),
+            dict(type='C', input_file='1.in', output_file='1.out', checker='floats',
+                 checker_args='{"precision": 4}'),
+            dict(type='C', input_file='2.in', output_file='2.out'),
+            dict(type='E'),
+            dict(type='S', points=20, batch_dependencies='1'),
+            dict(type='C', input_file='3.in', output_file='3.out'),
+            dict(type='E'),
+            dict(type='C', input_file='4.in', output_file='4.out', points=10, output_limit=5),
+        )
+        for order, row in enumerate(rows, 1):
+            row.setdefault('is_pretest', False)
+            ProblemTestCase.objects.create(dataset=self.problem, order=order, **row)
+        files = ['p.in', 'p.out'] + ['%d.%s' % (number, kind) for number in range(1, 5) for kind in ('in', 'out')]
+        init = ProblemDataCompiler(self.problem, self.data, self.problem.cases.order_by('order'), files).make_init()
+        other = create_problem(code='zipimportother', types=('type',), authors=('author',))
+        other_data = ProblemData.objects.create(problem=other)
+
+        path = self.make_zip_path(dict.fromkeys(files, 'x') | {'init.yml': yaml.safe_dump(init)})
+        self.assertEqual(import_cases_from_zip(other, other_data, path), [])
+
+        self.assertEqual(self.case_rows(other), self.case_rows())
+        self.assertEqual(len(self.case_rows(other)), len(rows))
+
+    def test_init_yml_replaces_cases(self):
+        ProblemTestCase.objects.create(dataset=self.problem, order=1, input_file='old.in', is_pretest=False)
+        path = self.make_zip_path({'init.yml': 'test_cases:\n- {in: 1.in, out: 1.out, points: 7}\n'})
+        import_cases_from_zip(self.problem, self.data, path)
+        self.assertEqual(self.problem.cases.count(), 1)
+        self.assertEqual(self.problem.cases.get().input_file, '1.in')
+
+    def test_absent_dataset_keys_keep_values(self):
+        self.data.output_limit = 9
+        self.data.checker = 'standard'
+        self.data.save()
+        path = self.make_zip_path({'init.yml': 'test_cases:\n- {in: 1.in, out: 1.out, points: 7}\n'})
+        import_cases_from_zip(self.problem, self.data, path)
+        self.data.refresh_from_db()
+        self.assertEqual((self.data.output_limit, self.data.checker), (9, 'standard'))
+
+    def test_init_yml_without_cases_keeps_rows(self):
+        ProblemTestCase.objects.create(dataset=self.problem, order=1, input_file='old.in', is_pretest=False)
+        before = self.case_rows()
+        import_cases_from_zip(self.problem, self.data, self.make_zip_path({'init.yml': 'output_limit_length: 3'}))
+        self.data.refresh_from_db()
+        self.assertEqual(self.case_rows(), before)
+        self.assertEqual(self.data.output_limit, 3)
+
+    def test_no_yaml_empty_problem_registers_pairs(self):
+        path = self.make_zip_path(dict.fromkeys(('10.in', '10.out', '2.in', '2.out'), 'x'))
+        self.assertEqual(import_cases_from_zip(self.problem, self.data, path), [])
+        self.assertEqual(list(self.problem.cases.order_by('order').values_list(
+            'order', 'type', 'input_file', 'output_file', 'points', 'is_pretest')),
+            [(1, 'C', '2.in', '2.out', None, False), (2, 'C', '10.in', '10.out', None, False)])
+
+    def test_no_yaml_empty_zip_adds_nothing(self):
+        self.assertEqual(import_cases_from_zip(self.problem, self.data, self.make_zip_path({})), [])
+        self.assertEqual(self.problem.cases.count(), 0)
+
+    def test_no_yaml_with_cases_adds_nothing(self):
+        ProblemTestCase.objects.create(dataset=self.problem, order=1, input_file='1.in', output_file='1.out',
+                                       is_pretest=False)
+        path = self.make_zip_path(dict.fromkeys(('1.in', '1.out', '2.in', '2.out'), 'x'))
+        warnings = import_cases_from_zip(self.problem, self.data, path)
+        self.assertEqual(self.problem.cases.count(), 1)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('2', warnings[0])
+
+    def test_unpaired_files_warn(self):
+        path = self.make_zip_path(dict.fromkeys(('1.in', '1.out', 'x.ans'), 'x'))
+        warnings = import_cases_from_zip(self.problem, self.data, path)
+        self.assertEqual(self.problem.cases.count(), 1)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('1', warnings[0])
+
+    def test_generator_skips_registration(self):
+        self.data.generator.name = 'code/gen.py'
+        self.data.save()
+        path = self.make_zip_path(dict.fromkeys(('1.in', '1.out'), 'x'))
+        import_cases_from_zip(self.problem, self.data, path)
+        self.assertEqual(self.problem.cases.count(), 0)
+
+    def test_invalid_yaml_changes_nothing(self):
+        ProblemTestCase.objects.create(dataset=self.problem, order=1, input_file='old.in', is_pretest=False)
+        before = self.case_rows()
+        with self.assertRaises(ProblemDataError):
+            import_cases_from_zip(self.problem, self.data, self.make_zip_path({'init.yml': '- 1'}))
+        self.assertEqual(self.case_rows(), before)

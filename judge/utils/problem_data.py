@@ -11,8 +11,9 @@ import yaml
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
+from django.db import transaction
 from django.urls import reverse
-from django.utils.translation import gettext as _
+from django.utils.translation import gettext as _, ngettext
 
 if os.altsep:
     def split_path_first(path, repath=re.compile('[%s]' % re.escape(os.sep + os.altsep))):
@@ -120,8 +121,10 @@ def read_zip_init_yml(zip_file: ZipFile) -> Optional[dict]:
         raise ProblemDataError(_('init.yml is too large (limit: %d bytes).') % MAX_INIT_YML_SIZE)
     try:
         init = yaml.safe_load(zip_file.read(info))
-    except (BadZipFile, EOFError, NotImplementedError, RuntimeError, zlib.error, yaml.YAMLError) as e:
-        # RuntimeError also covers encrypted entries and RecursionError from deeply nested yaml
+    except (BadZipFile, EOFError, NotImplementedError, RuntimeError, zlib.error, yaml.YAMLError,
+            ValueError) as e:
+        # RuntimeError also covers encrypted entries and RecursionError from deeply nested yaml;
+        # ValueError covers impossible timestamps such as 2001-13-45
         raise ProblemDataError(_('init.yml could not be parsed: %s') % e)
     if not isinstance(init, dict):
         raise ProblemDataError(_('init.yml must be a mapping.'))
@@ -233,6 +236,45 @@ def pair_zip_files(names: Iterable[str]) -> Tuple[List[Tuple[str, str]], List[st
 
     return (sorted(pairs, key=lambda pair: natural_key(pair[0])),
             sorted((name for name in names if name not in used), key=natural_key))
+
+
+def import_cases_from_zip(problem, data, zip_path: str) -> List[str]:
+    """Apply a data zip to a problem and return warnings; ProblemDataError is raised before any DB change."""
+    from judge.models import ProblemTestCase
+
+    with ZipFile(zip_path) as zip_file:
+        init = read_zip_init_yml(zip_file)
+        names = zip_file.namelist()
+    parsed = parse_init(init) if init is not None else None
+    pairs, unpaired = pair_zip_files(names)
+
+    warnings = []
+    with transaction.atomic():
+        if parsed is not None:
+            warnings = parsed.warnings
+            if parsed.cases is not None:
+                problem.cases.all().delete()
+                ProblemTestCase.objects.bulk_create(ProblemTestCase(dataset=problem, **case) for case in parsed.cases)
+            for field, value in parsed.settings.items():
+                setattr(data, field, value)
+            data.save()
+        elif problem.cases.exists():
+            used = {file for case in problem.cases.all() for file in (case.input_file, case.output_file)}
+            unused = len(({name for pair in pairs for name in pair} | set(unpaired)) - used)
+            if unused:
+                warnings.append(ngettext('%d file in the zip is not used by any test case.',
+                                         '%d files in the zip are not used by any test case.', unused) % unused)
+        elif not data.generator:
+            ProblemTestCase.objects.bulk_create(
+                ProblemTestCase(dataset=problem, order=order, input_file=input_file, output_file=output_file,
+                                is_pretest=False)
+                for order, (input_file, output_file) in enumerate(pairs, 1)
+            )
+            if unpaired:
+                warnings.append(ngettext('%d file in the zip could not be paired as input and output and was ignored.',
+                                         '%d files in the zip could not be paired as input and output and were '
+                                         'ignored.', len(unpaired)) % len(unpaired))
+    return warnings
 
 
 class ProblemDataCompiler(object):

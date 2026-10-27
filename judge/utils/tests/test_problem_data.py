@@ -173,6 +173,14 @@ class ReadZipInitYmlTestCase(SimpleTestCase):
             with self.subTest(content=content), self.assertRaises(ProblemDataError):
                 read_zip_init_yml(make_zip({'init.yml': content}))
 
+    def test_read_rejects_corrupt_and_encrypted_entries(self):
+        for name, damage in (('corrupt', lambda info: setattr(info, 'CRC', info.CRC + 1)),
+                             ('encrypted', lambda info: setattr(info, 'flag_bits', info.flag_bits | 0x1))):
+            zip_file = make_zip({'init.yml': 'test_cases: []'})
+            damage(zip_file.getinfo('init.yml'))
+            with self.subTest(name), self.assertRaises(ProblemDataError):
+                read_zip_init_yml(zip_file)
+
 
 class ParseInitTestCase(SimpleTestCase):
     def test_parse_normal_and_pretest_cases(self):
@@ -224,6 +232,20 @@ class ParseInitTestCase(SimpleTestCase):
         self.assertTrue(any('archive' in warning for warning in parsed.warnings))
         self.assertTrue(any('weird.py' in warning for warning in parsed.warnings))
         self.assertNotIn('checker', parsed.settings)
+
+    def test_parse_no_cases_leaves_cases_alone(self):
+        for init in ({'test_cases': []}, {'test_cases': None}, {'pretest_test_cases': [], 'test_cases': None}):
+            with self.subTest(init=init):
+                self.assertIsNone(parse_init(init).cases)
+
+    def test_parse_rejects_malformed_shapes(self):
+        batch = {'points': 1, 'batched': []}
+        for init in ({'test_cases': 5}, {'test_cases': [dict(batch, batched=5)]},
+                     {'test_cases': [dict(batch, dependencies=5)]},
+                     {'test_cases': [{'points': 1, 'generator_args': 5}]}, {'hints': 5},
+                     {'test_cases': [{'points': float('inf')}]}, {'output_limit_length': float('inf')}):
+            with self.subTest(init=init), self.assertRaises(ProblemDataError):
+                parse_init(init)
 
     def test_parse_rejects_bad_values(self):
         for entry in ({'in': '1.in', 'out': '1.out', 'points': 'abc'}, {'in': 'a' * 101, 'out': '1.out', 'points': 1}):

@@ -2,9 +2,10 @@ import ast
 import json
 import os
 import re
+import zlib
 from collections import namedtuple
 from typing import Iterable, List, Optional, Tuple
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile
 
 import yaml
 from django.conf import settings
@@ -119,7 +120,8 @@ def read_zip_init_yml(zip_file: ZipFile) -> Optional[dict]:
         raise ProblemDataError(_('init.yml is too large (limit: %d bytes).') % MAX_INIT_YML_SIZE)
     try:
         init = yaml.safe_load(zip_file.read(info))
-    except yaml.YAMLError as e:
+    except (BadZipFile, EOFError, NotImplementedError, RuntimeError, zlib.error, yaml.YAMLError) as e:
+        # RuntimeError also covers encrypted entries and RecursionError from deeply nested yaml
         raise ProblemDataError(_('init.yml could not be parsed: %s') % e)
     if not isinstance(init, dict):
         raise ProblemDataError(_('init.yml must be a mapping.'))
@@ -129,8 +131,16 @@ def read_zip_init_yml(zip_file: ZipFile) -> Optional[dict]:
 def _to_int(value):
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise ProblemDataError(_('Expected an integer in init.yml, got: %s') % (value,))
+
+
+def _as_list(value):
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ProblemDataError(_('Expected a list in init.yml, got: %s') % (value,))
+    return value
 
 
 def _parse_checker(value, warnings):
@@ -156,7 +166,7 @@ def _parse_entry(entry, is_pretest, warnings, unknown_keys):
     for key, field in (('points', 'points'), ('output_limit_length', 'output_limit'),
                        ('output_prefix_length', 'output_prefix')):
         row[field] = _to_int(entry[key]) if entry.get(key) is not None else None
-    row['generator_args'] = '\n'.join(map(str, entry.get('generator_args') or ()))
+    row['generator_args'] = '\n'.join(map(str, _as_list(entry.get('generator_args'))))
     row['checker'], row['checker_args'] = _parse_checker(entry['checker'], warnings) if 'checker' in entry else ('', '')
     return row
 
@@ -165,29 +175,27 @@ def parse_init(init: dict) -> ParsedInit:
     """Inverse of ProblemDataCompiler.make_init(): turn a bundled init.yml into form data."""
     warnings = []
     unknown_keys = set(map(str, init.keys() - TOP_LEVEL_KEYS))
-    cases = None
-    if 'test_cases' in init or 'pretest_test_cases' in init:
-        cases = []
+    cases = []
 
-        def add(type, is_pretest, **fields):
-            cases.append(dict({
-                'order': len(cases) + 1, 'type': type, 'input_file': '', 'output_file': '', 'points': None,
-                'is_pretest': is_pretest, 'output_limit': None, 'output_prefix': None, 'checker': '',
-                'checker_args': '', 'generator_args': '', 'batch_dependencies': '',
-            }, **fields))
+    def add(type, is_pretest, **fields):
+        cases.append(dict({
+            'order': len(cases) + 1, 'type': type, 'input_file': '', 'output_file': '', 'points': None,
+            'is_pretest': is_pretest, 'output_limit': None, 'output_prefix': None, 'checker': '',
+            'checker_args': '', 'generator_args': '', 'batch_dependencies': '',
+        }, **fields))
 
-        for key, is_pretest in (('pretest_test_cases', True), ('test_cases', False)):
-            for entry in init.get(key) or ():
-                row = _parse_entry(entry, is_pretest, warnings, unknown_keys)
-                if 'batched' not in entry:
-                    add('C', **row)
-                    continue
-                # shortcut: dependencies are imported as written, not renumbered; the compiler rejects invalid ones.
-                dependencies = ','.join(str(_to_int(number)) for number in entry.get('dependencies') or ())
-                add('S', **dict(row, batch_dependencies=dependencies, input_file='', output_file=''))
-                for item in entry['batched'] or ():
-                    add('C', **dict(_parse_entry(item, is_pretest, warnings, unknown_keys), points=None))
-                add('E', is_pretest)
+    for key, is_pretest in (('pretest_test_cases', True), ('test_cases', False)):
+        for entry in _as_list(init.get(key)):
+            row = _parse_entry(entry, is_pretest, warnings, unknown_keys)
+            if 'batched' not in entry:
+                add('C', **row)
+                continue
+            # shortcut: dependencies are imported as written, not renumbered; the compiler rejects invalid ones.
+            dependencies = ','.join(str(_to_int(number)) for number in _as_list(entry.get('dependencies')))
+            add('S', **dict(row, batch_dependencies=dependencies, input_file='', output_file=''))
+            for item in _as_list(entry['batched']):
+                add('C', **dict(_parse_entry(item, is_pretest, warnings, unknown_keys), points=None))
+            add('E', is_pretest)
 
     settings = {}
     for key, field in (('output_limit_length', 'output_limit'), ('output_prefix_length', 'output_prefix')):
@@ -198,12 +206,13 @@ def parse_init(init: dict) -> ParsedInit:
         if checker:
             settings.update(checker=checker, checker_args=checker_args)
     if 'hints' in init:
-        hints = init['hints'] or ()
+        hints = _as_list(init['hints'])
         settings.update(unicode='unicode' in hints, nobigmath='nobigmath' in hints)
 
     if unknown_keys:
         warnings.insert(0, _('Ignored init.yml keys: %s') % ', '.join(sorted(unknown_keys)))
-    return ParsedInit(cases, settings, warnings)
+    # no cases in the yaml means leave the problem's existing cases alone
+    return ParsedInit(cases or None, settings, warnings)
 
 
 def pair_zip_files(names: Iterable[str]) -> Tuple[List[Tuple[str, str]], List[str]]:

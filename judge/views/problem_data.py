@@ -7,6 +7,7 @@ from zipfile import BadZipfile, ZipFile
 
 from django import forms
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
@@ -21,7 +22,7 @@ from django.views.generic import DetailView
 
 from judge.highlight_code import highlight_code
 from judge.models import CHECKERS, Problem, ProblemData, ProblemTestCase, Submission, problem_data_storage
-from judge.utils.problem_data import ProblemDataCompiler, scan_checker_source
+from judge.utils.problem_data import ProblemDataCompiler, ProblemDataError, import_cases_from_zip, scan_checker_source
 from judge.utils.unicode import utf8text
 from judge.utils.views import TitleMixin, add_file_response
 from judge.views.problem import ProblemMixin
@@ -262,7 +263,20 @@ class ProblemDataView(TitleMixin, ProblemManagerMixin):
                 case.save()
             for case in cases_formset.deleted_objects:
                 case.delete()
+            import_error = None
+            if 'problem-data-zipfile' in request.FILES:
+                try:
+                    for warning in import_cases_from_zip(problem, data, data.zipfile.path):
+                        messages.warning(request, warning)
+                except ProblemDataError as e:
+                    import_error = e.message
+                except BadZipfile as e:
+                    import_error = str(e)
             ProblemDataCompiler.generate(problem, data, problem.cases.order_by('order'), valid_files)
+            if import_error:
+                # queryset update: ProblemData.save() would also act on a pending zipfile replacement
+                ProblemData.objects.filter(pk=data.pk).update(feedback=import_error)
+                data.feedback = import_error
             return HttpResponseRedirect(request.get_full_path())
         return self.render_to_response(self.get_context_data(data_form=data_form, cases_formset=cases_formset,
                                                              valid_files=valid_files))

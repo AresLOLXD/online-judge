@@ -1,10 +1,10 @@
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
 
+import requests
 from django.forms import Widget
 from django.test import SimpleTestCase, override_settings
-import requests
 
-from judge.utils.turnstile import validate_turnstile, TurnstileWidget
+from judge.utils.turnstile import TurnstileWidget, validate_turnstile
 
 
 @override_settings(TURNSTILE_SECRET_KEY='test-secret')

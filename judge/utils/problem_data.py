@@ -99,6 +99,8 @@ class ProblemDataError(Exception):
 INIT_YML_NAME = 'init.yml'
 # shortcut: 1 MiB cap on the bundled init.yml, raise it if a real dataset needs a larger one.
 MAX_INIT_YML_SIZE = 1 << 20
+# shortcut: cap on cases per import (the data page formset allows 1001), raise it if a real dataset needs more.
+MAX_IMPORTED_CASES = 1000
 MAX_FILE_NAME_LENGTH = 100  # ProblemTestCase.input_file / output_file max_length
 
 ParsedInit = namedtuple('ParsedInit', 'cases settings warnings')
@@ -133,9 +135,12 @@ def read_zip_init_yml(zip_file: ZipFile) -> Optional[dict]:
 
 def _to_int(value):
     try:
-        return int(value)
+        number = int(value)
     except (TypeError, ValueError, OverflowError):
         raise ProblemDataError(_('Expected an integer in init.yml, got: %s') % (value,))
+    if not -2 ** 31 <= number < 2 ** 31:  # the model fields are 32-bit
+        raise ProblemDataError(_('Integer out of range in init.yml: %s') % (value,))
+    return number
 
 
 def _as_list(value):
@@ -154,7 +159,12 @@ def _parse_checker(value, warnings):
     if name not in [checker for checker, _label in CHECKERS]:
         warnings.append(_('Checker %s is not supported and was ignored.') % (name,))
         return '', ''
-    return name, json.dumps(args) if args else ''
+    if args is not None and not isinstance(args, dict):
+        raise ProblemDataError(_('Checker arguments in init.yml must be a mapping.'))
+    try:
+        return name, json.dumps(args) if args else ''
+    except (TypeError, ValueError):
+        raise ProblemDataError(_('Checker arguments in init.yml must be plain JSON values.'))
 
 
 def _parse_entry(entry, is_pretest, warnings, unknown_keys):
@@ -181,6 +191,9 @@ def parse_init(init: dict) -> ParsedInit:
     cases = []
 
     def add(type, is_pretest, **fields):
+        # yaml aliases can expand a small file into millions of rows
+        if len(cases) >= MAX_IMPORTED_CASES:
+            raise ProblemDataError(_('init.yml describes more than %d test cases.') % MAX_IMPORTED_CASES)
         cases.append(dict({
             'order': len(cases) + 1, 'type': type, 'input_file': '', 'output_file': '', 'points': None,
             'is_pretest': is_pretest, 'output_limit': None, 'output_prefix': None, 'checker': '',
@@ -231,7 +244,7 @@ def pair_zip_files(names: Iterable[str]) -> Tuple[List[Tuple[str, str]], List[st
     used = {name for pair in pairs for name in pair}
 
     def natural_key(name):
-        return len(name) > MAX_FILE_NAME_LENGTH, [int(part) if part.isdigit() else part
+        return len(name) > MAX_FILE_NAME_LENGTH, [int(part) if part.isdecimal() else part
                                                   for part in re.split(r'(\d+)', name)]
 
     return (sorted(pairs, key=lambda pair: natural_key(pair[0])),
@@ -267,6 +280,8 @@ def import_cases_from_zip(problem, data, zip_path: str) -> List[str]:
                 warnings.append(ngettext('%d file in the zip is not used by any test case.',
                                          '%d files in the zip are not used by any test case.', unused) % unused)
         elif not data.generator:
+            if len(pairs) > MAX_IMPORTED_CASES:
+                raise ProblemDataError(_('The zip contains more than %d input/output pairs.') % MAX_IMPORTED_CASES)
             ProblemTestCase.objects.bulk_create(
                 ProblemTestCase(dataset=problem, order=order, input_file=input_file, output_file=output_file,
                                 is_pretest=False)

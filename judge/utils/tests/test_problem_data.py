@@ -1,3 +1,4 @@
+import datetime
 import os
 import tempfile
 from io import BytesIO
@@ -9,8 +10,8 @@ from django.test import SimpleTestCase, TestCase
 from judge.models import ProblemData, ProblemTestCase
 from judge.models.tests.util import create_problem, create_problem_type, create_user
 from judge.utils.problem_data import (
-    MAX_INIT_YML_SIZE, ParsedInit, ProblemDataCompiler, ProblemDataError, import_cases_from_zip, pair_zip_files,
-    parse_init, read_zip_init_yml, scan_checker_source,
+    MAX_IMPORTED_CASES, MAX_INIT_YML_SIZE, ParsedInit, ProblemDataCompiler, ProblemDataError,
+    import_cases_from_zip, pair_zip_files, parse_init, read_zip_init_yml, scan_checker_source,
 )
 
 
@@ -251,18 +252,31 @@ class ParseInitTestCase(SimpleTestCase):
                 parse_init(init)
 
     def test_parse_rejects_bad_values(self):
-        for entry in ({'in': '1.in', 'out': '1.out', 'points': 'abc'}, {'in': 'a' * 101, 'out': '1.out', 'points': 1}):
+        for entry in ({'in': '1.in', 'out': '1.out', 'points': 'abc'}, {'in': 'a' * 101, 'out': '1.out', 'points': 1},
+                      {'in': '1.in', 'out': '1.out', 'points': 99999999999999999999}):
             with self.subTest(entry=entry), self.assertRaises(ProblemDataError):
                 parse_init({'test_cases': [entry]})
+
+    def test_parse_rejects_unserializable_or_non_object_checker_args(self):
+        for args in ({'d': datetime.date(2001, 1, 1)}, [1, 2]):
+            with self.subTest(args=args), self.assertRaises(ProblemDataError):
+                parse_init({'test_cases': [{'points': 1, 'checker': {'name': 'floats', 'args': args}}]})
+
+    def test_parse_caps_rows_created_by_yaml_aliases(self):
+        item_count = int(MAX_IMPORTED_CASES ** 0.5) + 1
+        init = yaml.safe_load('i: &i {in: a, out: b}\nb: &b {points: 1, batched: [%s]}\ntest_cases: [%s]' % (
+            ', '.join(['*i'] * item_count), ', '.join(['*b'] * item_count)))
+        with self.assertRaises(ProblemDataError):
+            parse_init(init)
 
 
 class PairZipFilesTestCase(SimpleTestCase):
     def test_pair_zip_files(self):
         long_name = 'a' * 101 + '.in'
         names = ['10.in', '10.out', '2.in', '2.out', 'init.yml', 'data/', '__MACOSX/._2.in', '__MACOSX/._2.out',
-                 'x.in', 'x.ans', long_name]
+                 'x.in', 'x.ans', long_name, '1\u00b2']
         self.assertEqual(pair_zip_files(names), ([('2.in', '2.out'), ('10.in', '10.out')],
-                                                 ['x.ans', 'x.in', long_name]))
+                                                 ['1\u00b2', 'x.ans', 'x.in', long_name]))
 
 
 CASE_FIELDS = ('order', 'type', 'input_file', 'output_file', 'generator_args', 'points', 'is_pretest',
@@ -366,6 +380,12 @@ class ImportCasesFromZipTestCase(TestCase):
         self.assertEqual(self.problem.cases.count(), 1)
         self.assertEqual(len(warnings), 1)
         self.assertIn('2', warnings[0])
+
+    def test_no_yaml_too_many_pairs_changes_nothing(self):
+        names = ['%d.%s' % (number, kind) for number in range(MAX_IMPORTED_CASES + 1) for kind in ('in', 'out')]
+        with self.assertRaises(ProblemDataError):
+            import_cases_from_zip(self.problem, self.data, self.make_zip_path(dict.fromkeys(names, 'x')))
+        self.assertEqual(self.problem.cases.count(), 0)
 
     def test_unpaired_files_warn(self):
         path = self.make_zip_path(dict.fromkeys(('1.in', '1.out', 'x.ans'), 'x'))

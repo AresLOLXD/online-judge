@@ -67,6 +67,7 @@ uv run python manage.py test judge
 ```
 
 If `.venv` already exists on another Python version, `uv sync` removes it and recreates it on Python 3.13 without asking.
+The environment lives inside the checkout, so run `python manage.py compilemessages --ignore=.venv` to keep the third-party `.po` files in `.venv` out of the build.
 
 ## Screenshots
 

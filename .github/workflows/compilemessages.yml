@@ -36,4 +36,4 @@ jobs:
     - name: Compile messages
       run: |
         echo "STATIC_ROOT = '/tmp'" > dmoj/local_settings.py
-        uv run --no-sync python manage.py compilemessages
+        uv run --no-sync python manage.py compilemessages --ignore=.venv

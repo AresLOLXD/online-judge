@@ -104,6 +104,13 @@ class ProblemDataViewTestCase(TestCase):
         self.assertTrue(data.feedback)
         self.assertTrue(os.path.exists(data.zipfile.path))
 
+    def test_invalid_yaml_feedback_keeps_the_compile_error(self):
+        self._post(make_zip_bytes({'init.yml': ONE_CASE_INIT, '1.in': 'a', '1.out': 'b'}))
+        self._post(make_zip_bytes({'init.yml': '- 1\n- 2\n'}))
+        feedback = ProblemData.objects.get(problem=self.problem).feedback
+        self.assertIn('init.yml must be a mapping.', feedback)
+        self.assertIn('does not exist', feedback)
+
     def test_warnings_are_shown(self):
         response = self._post(make_zip_bytes({'1.in': 'a', '1.out': 'b', 'x.ans': 'c'}))
         self.assertContains(response, '1 file in the zip could not be paired as input and output and was ignored.')

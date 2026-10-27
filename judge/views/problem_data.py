@@ -275,8 +275,8 @@ class ProblemDataView(TitleMixin, ProblemManagerMixin):
             ProblemDataCompiler.generate(problem, data, problem.cases.order_by('order'), valid_files)
             if import_error:
                 # queryset update: ProblemData.save() would also act on a pending zipfile replacement
-                ProblemData.objects.filter(pk=data.pk).update(feedback=import_error)
-                data.feedback = import_error
+                data.feedback = ' '.join(part for part in (import_error, data.feedback) if part)
+                ProblemData.objects.filter(pk=data.pk).update(feedback=data.feedback)
             return HttpResponseRedirect(request.get_full_path())
         return self.render_to_response(self.get_context_data(data_form=data_form, cases_formset=cases_formset,
                                                              valid_files=valid_files))

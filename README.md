@@ -56,6 +56,18 @@ See it live at [dmoj.ca](https://dmoj.ca/)!
 
 Check out the install documentation at [docs.dmoj.ca](https://docs.dmoj.ca/#/site/installation). Feel free to reach out to us on [Discord](https://dmoj.ca/about/discord/) if you have any questions.
 
+### Installing with uv
+
+Dependencies are pinned in `uv.lock` and installed with [uv](https://docs.astral.sh/uv/getting-started/installation/):
+
+```sh
+uv sync                       # creates .venv on Python 3.13 from uv.lock, including the dev group
+uv sync --extra mysql         # also builds the compiled MySQL driver (needs the MariaDB/MySQL headers)
+uv run python manage.py test judge
+```
+
+If `.venv` already exists on another Python version, `uv sync` removes it and recreates it on Python 3.13 without asking.
+
 ## Screenshots
 
 ### Sleek problem statements

@@ -8,10 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v5
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v6
       with:
-        python-version: '3.11'
+        enable-cache: true
     - name: Checkout submodules
       run: |
         git submodule init
@@ -21,13 +21,12 @@ jobs:
          sudo apt-get install gettext
          curl -O https://artifacts.crowdin.com/repo/deb/crowdin3.deb
          sudo dpkg -i crowdin3.deb
-         pip install -r requirements.txt
-         pip install pymysql
+         uv sync --locked
     - name: Collect localizable strings
       run: |
         echo "STATIC_ROOT = '/tmp'" > dmoj/local_settings.py
-        python manage.py makemessages -l en -e py,html,txt
-        python manage.py makemessages -l en -d djangojs
+        uv run --no-sync python manage.py makemessages -l en -e py,html,txt
+        uv run --no-sync python manage.py makemessages -l en -d djangojs
     - name: Upload strings to Crowdin
       env:
         CROWDIN_API_TOKEN: ${{ secrets.CROWDIN_API_V2_TOKEN }}

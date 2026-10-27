@@ -358,14 +358,15 @@
 {% block body %}
     {% include "messages.html" %}
     <div id="data-help" class="alert alert-info">
-        <p>{{ _('Upload a zip with the test case files (for example 1.in, 1.out, 2.in, 2.out). Cases are registered automatically when you save.') }}</p>
-        <p>{{ _('Including an init.yml in the zip is faster: it replaces the current cases and settings with the ones it describes.') }}</p>
+        <p>{{ _('Upload a zip with the test case files (for example 1.in, 1.out, 2.in, 2.out). If the problem has no cases yet, they are registered automatically when you save.') }}</p>
+        <p>{{ _('Including an init.yml in the zip is faster: the cases and settings it describes replace the current ones. Settings this page cannot represent, for example other checker types or judge options, are ignored.') }}</p>
         <p>{{ _('A new zip replaces the previous one, so it must contain all the cases, not only the new ones.') }}</p>
         <p>{{ _('The checker and the other settings are configured below.') }}</p>
     </div>
     <div id="rejudge-notice" class="alert alert-warning">
         <p>{{ _('Changing the cases does not rejudge existing submissions: they keep their previous verdict and points until they are rejudged.') }}</p>
-        <p>{{ _('A rejudge sends each selected submission back to the judge queue at batch priority, below normal submissions, so it takes time proportional to the number of submissions. Verdict, points and per-case results are overwritten, and the change is recorded in the revision history as "Rejudged". When each submission finishes, user points, problem statistics and contest scores are recalculated. Submissions locked by a finished contest are archived instead of rejudged.') }}</p>
+        <p>{{ _('A rejudge sends each selected submission back to the judge queue at batch priority, below normal submissions, so it takes time proportional to the number of submissions. Verdict, points and per-case results are overwritten, and the change is recorded in the revision history as "Rejudged". When each submission finishes, user points, problem statistics and contest scores are recalculated.') }}</p>
+        <p>{{ _('Submissions locked by a finished contest are archived instead of rejudged only if the "archive" option of the Manage submissions form is selected, which it is by default.') }}</p>
         {% if problem.is_subs_manageable_by(request.user) %}
             <p><a id="rejudge-link" href="{{ url('problem_manage_submissions', problem.code) }}">{{ _('Manage submissions to rejudge') }}</a></p>
         {% endif %}

@@ -57,7 +57,9 @@ class ProblemData(models.Model):
 
     def save(self, *args, **kwargs):
         if self.zipfile != self.__original_zipfile:
-            self.__original_zipfile.delete(save=False)
+            new_zipfile = self.zipfile
+            self.__original_zipfile.delete(save=False)  # also resets self.zipfile to None
+            self.zipfile = new_zipfile
         return super(ProblemData, self).save(*args, **kwargs)
 
     def has_yml(self):

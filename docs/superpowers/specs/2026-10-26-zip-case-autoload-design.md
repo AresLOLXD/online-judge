@@ -202,6 +202,9 @@ The zip comes from an authenticated editor but is still untrusted input.
   1 MiB with an error in the feedback box. **[Claude's call]** on the limit;
   a `shortcut:` comment marks it.
 - Only the exact root entry `init.yml` counts; nested paths do not.
+- YAML aliases are rejected: a small file with aliases can expand into
+  gigabytes of row text, and the site's own exported `init.yml` never uses
+  them. Hand-written files with anchors/aliases must be expanded by hand.
 - Coerce `points`, dependency numbers and limits to integers and treat a value
   that does not coerce as a parse error for that yaml.
 - File names written to `input_file` / `output_file` must be names that exist

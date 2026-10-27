@@ -115,6 +115,15 @@ TOP_LEVEL_KEYS = frozenset((
 ))
 
 
+class _NoAliasSafeLoader(yaml.SafeLoader):
+    # Still a SafeLoader (no arbitrary object construction); it only refuses aliases, which can expand a small
+    # file into gigabytes of row text.
+    def compose_node(self, parent, index):
+        if self.check_event(yaml.AliasEvent):
+            raise ProblemDataError(_('YAML aliases (&anchor / *reference) are not supported in init.yml.'))
+        return super().compose_node(parent, index)
+
+
 def read_zip_init_yml(zip_file: ZipFile) -> Optional[dict]:
     try:
         info = zip_file.getinfo(INIT_YML_NAME)
@@ -123,7 +132,7 @@ def read_zip_init_yml(zip_file: ZipFile) -> Optional[dict]:
     if info.file_size > MAX_INIT_YML_SIZE:
         raise ProblemDataError(_('init.yml is too large (limit: %d bytes).') % MAX_INIT_YML_SIZE)
     try:
-        init = yaml.safe_load(zip_file.read(info))
+        init = yaml.load(zip_file.read(info), Loader=_NoAliasSafeLoader)
     except (BadZipFile, EOFError, NotImplementedError, RuntimeError, zlib.error, yaml.YAMLError,
             ValueError) as e:
         # RuntimeError also covers encrypted entries and RecursionError from deeply nested yaml;

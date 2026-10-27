@@ -177,6 +177,14 @@ class ReadZipInitYmlTestCase(SimpleTestCase):
             with self.subTest(content=content), self.assertRaises(ProblemDataError):
                 read_zip_init_yml(make_zip({'init.yml': content}))
 
+    def test_read_rejects_yaml_aliases(self):
+        with self.assertRaisesMessage(ProblemDataError, 'aliases'):
+            read_zip_init_yml(make_zip({'init.yml': 'a: &x [1, 2]\nb: *x\ntest_cases: []'}))
+
+    def test_read_accepts_anchor_without_alias(self):
+        self.assertEqual(read_zip_init_yml(make_zip({'init.yml': 'a: &x [1, 2]\ntest_cases: []'})),
+                         {'a': [1, 2], 'test_cases': []})
+
     def test_read_rejects_corrupt_and_encrypted_entries(self):
         for name, damage in (('corrupt', lambda info: setattr(info, 'CRC', info.CRC + 1)),
                              ('encrypted', lambda info: setattr(info, 'flag_bits', info.flag_bits | 0x1))):

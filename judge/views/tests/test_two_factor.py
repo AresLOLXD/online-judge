@@ -372,3 +372,20 @@ class WebAuthnLoginTestCase(TwoFactorTestCase):
         self.assertTrue(self.client.session['2fa_passed'])
         self.credential.refresh_from_db()
         self.assertEqual(self.credential.counter, 0)
+
+
+@override_settings(WEBAUTHN_RP_ID='testserver')
+class WebAuthnPagesTestCase(TwoFactorTestCase):
+    def test_edit_profile_page_uses_the_new_helpers(self):
+        self.pass_2fa()
+        response = self.client.get(reverse('user_edit_profile'))
+        self.assertContains(response, 'registrationCredentialToJSON')
+        self.assertNotContains(response, 'decodeJSONBytes')
+
+    def test_two_factor_page_uses_the_new_helpers(self):
+        self.profile.is_webauthn_enabled = True
+        self.profile.save(update_fields=['is_webauthn_enabled'])
+        response = self.client.get(reverse('login_2fa'))
+        self.assertContains(response, 'authenticationCredentialToJSON')
+        self.assertContains(response, 'use-webauthn')
+        self.assertNotContains(response, 'buf2hex')

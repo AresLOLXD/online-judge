@@ -22,10 +22,6 @@
         $(() => {
             {% include "user/webauthn-helpers.js" %}
 
-            function buf2hex(buffer) {
-                return Array.prototype.map.call(new Uint8Array(buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
-            }
-
             $('#use-webauthn').click(event => {
                 event.preventDefault();
 
@@ -36,18 +32,10 @@
 
                 $.getJSON('{{ url('webauthn_assert') }}')
                     .done(publicKey => {
-                        decodeJSONBytes(publicKey);
+                        decodePublicKeyOptions(publicKey);
                         navigator.credentials.get({publicKey})
                             .then(credential => {
-                                credential = {
-                                    id: credential.id,
-                                    response: {
-                                        authData: urlSafeBase64Encode(credential.response.authenticatorData),
-                                        clientData: urlSafeBase64Encode(credential.response.clientDataJSON),
-                                        signature: buf2hex(credential.response.signature),
-                                    }
-                                };
-                                $('#id_webauthn_response').val(JSON.stringify(credential));
+                                $('#id_webauthn_response').val(JSON.stringify(authenticationCredentialToJSON(credential)));
                                 $('#2fa-form').submit();
                             });
                     })

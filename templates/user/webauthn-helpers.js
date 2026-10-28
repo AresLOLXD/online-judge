@@ -9,23 +9,43 @@ function urlSafeBase64Encode(buffer) {
         .replace(/=+/g, '');
 }
 
-function decodeJSONBytes(object) {
-    for (const key in object) {
-        if (object.hasOwnProperty(key)) {
-            const value = object[key];
-            if (Array.isArray(value)) {
-                value.forEach((element, index, array) => {
-                    if (element._bytes) {
-                        array[index] = urlSafeBase64Decode(element._bytes);
-                    } else if (typeof value === 'object') {
-                        decodeJSONBytes(value);
-                    }
-                });
-            } else if (value._bytes) {
-                object[key] = urlSafeBase64Decode(value._bytes);
-            } else if (typeof value === 'object') {
-                decodeJSONBytes(value);
-            }
+function decodePublicKeyOptions(publicKey) {
+    publicKey.challenge = urlSafeBase64Decode(publicKey.challenge);
+    if (publicKey.user) {
+        publicKey.user.id = urlSafeBase64Decode(publicKey.user.id);
+    }
+    for (const list of [publicKey.excludeCredentials, publicKey.allowCredentials]) {
+        for (const descriptor of list || []) {
+            descriptor.id = urlSafeBase64Decode(descriptor.id);
         }
     }
+}
+
+function registrationCredentialToJSON(credential) {
+    return {
+        id: credential.id,
+        rawId: urlSafeBase64Encode(credential.rawId),
+        type: credential.type,
+        response: {
+            clientDataJSON: urlSafeBase64Encode(credential.response.clientDataJSON),
+            attestationObject: urlSafeBase64Encode(credential.response.attestationObject),
+        },
+        clientExtensionResults: credential.getClientExtensionResults(),
+    };
+}
+
+function authenticationCredentialToJSON(credential) {
+    const userHandle = credential.response.userHandle;
+    return {
+        id: credential.id,
+        rawId: urlSafeBase64Encode(credential.rawId),
+        type: credential.type,
+        response: {
+            clientDataJSON: urlSafeBase64Encode(credential.response.clientDataJSON),
+            authenticatorData: urlSafeBase64Encode(credential.response.authenticatorData),
+            signature: urlSafeBase64Encode(credential.response.signature),
+            userHandle: userHandle ? urlSafeBase64Encode(userHandle) : null,
+        },
+        clientExtensionResults: credential.getClientExtensionResults(),
+    };
 }

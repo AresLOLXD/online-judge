@@ -163,18 +163,11 @@
 
                 $.getJSON('{{ url('webauthn_attest') }}')
                     .done(publicKey => {
-                        decodeJSONBytes(publicKey);
+                        decodePublicKeyOptions(publicKey);
                         navigator.credentials.create({publicKey})
                             .then(credential => {
-                                credential = {
-                                    id: credential.id,
-                                    response: {
-                                        attObj: urlSafeBase64Encode(credential.response.attestationObject),
-                                        clientData: urlSafeBase64Encode(credential.response.clientDataJSON),
-                                    }
-                                };
                                 $.post('{{ url('webauthn_attest') }}', {
-                                    credential: JSON.stringify(credential),
+                                    credential: JSON.stringify(registrationCredentialToJSON(credential)),
                                     name: $('#new-webauthn-name').val(),
                                 })
                                     .then(() => window.location.reload())

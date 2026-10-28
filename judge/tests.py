@@ -1,6 +1,9 @@
 # judge/tests.py
+import datetime
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from django import forms
 from django.contrib.auth.models import User
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -8,6 +11,7 @@ from social_core.exceptions import AuthInputError
 
 from judge.models import Language
 from judge.social_auth import SocialAuthExceptionMiddleware, verify_email
+from judge.timezone import TimezoneMiddleware
 
 
 @override_settings(TURNSTILE_SITE_KEY='test-site-key', TURNSTILE_SECRET_KEY='test-secret')
@@ -100,3 +104,18 @@ class VerifyEmailTestCase(SimpleTestCase):
             response.url,
             reverse('social_auth_error') + '?message=The%20provider%20did%20not%20supply%20an%20email%20address.',
         )
+
+
+class TimezoneMiddlewareTestCase(SimpleTestCase):
+    def test_form_datetime_uses_current_offset(self):
+        # Under Django 5 a pytz zone makes make_aware use the historical local-mean-time offset.
+        middleware = TimezoneMiddleware(lambda request: forms.DateTimeField().clean('2026-11-15 18:00:00'))
+        cases = (
+            (None, datetime.datetime(2026, 11, 15, 23, 0, tzinfo=datetime.timezone.utc)),
+            ('America/Mexico_City', datetime.datetime(2026, 11, 16, 0, 0, tzinfo=datetime.timezone.utc)),
+        )
+        for tzname, expected in cases:
+            with self.subTest(timezone=tzname):
+                request = RequestFactory().get('/')
+                request.profile = SimpleNamespace(timezone=tzname) if tzname else None
+                self.assertEqual(middleware(request).astimezone(datetime.timezone.utc), expected)

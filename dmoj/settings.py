@@ -595,6 +595,8 @@ SOCIAL_AUTH_PIPELINE = (
     'social_core.pipeline.user.user_details',
 )
 
+# social_django migration 0020 backfills id_key only for built-in provider names, not our github-secure.
+SOCIAL_AUTH_OLD_ID_KEYS = {'github-secure': 'id'}
 SOCIAL_AUTH_GITHUB_SECURE_SCOPE = ['user:email']
 SOCIAL_AUTH_FACEBOOK_SCOPE = ['email']
 SOCIAL_AUTH_SLUGIFY_USERNAMES = True

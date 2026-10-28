@@ -30,3 +30,32 @@ schema: spec-driven
 #     archive:
 #       guidance:
 #         - Summarize the archive outcome before finishing
+
+context: |
+  DMOJ online judge "site" component: Django 5.2 on Python 3.13, managed with uv. Sandboxed code
+  execution lives in the separate judge-server project; this repo only talks to it through the bridge
+  protocol in judge/bridge/.
+  Verification: `uv run python manage.py test judge` (needs MySQL or MariaDB; the page tests need
+  `manage.py compilejsi18n` run first) and `uv run flake8` (120 columns, pycharm import order).
+  Deployment happens from the separate dmoj-docker repository. A change that touches dependencies,
+  migrations, settings or static assets must state its deploy impact.
+  User-facing strings go through gettext; translations are managed with Crowdin, so only the source
+  strings change in .po files.
+  Write every artifact in English, like the repository's docs, code and commits.
+
+rules:
+  proposal:
+    - State what is out of scope and the deploy impact (migrations, settings, dependencies)
+  specs:
+    - Write every Scenario so a Django test can check it, and name the test module that will hold it
+  tasks:
+    - Group tasks so that each group can become one implementation plan
+    - 'Under each group, list the Scenarios it covers as "Covers: <capability> / <requirement> / <scenario>"'
+
+operations:
+  apply:
+    guidance:
+      - Execute each task group with superpowers:subagent-driven-development, one plan per group, and tick the checkbox in tasks.md as each task passes its review
+  archive:
+    guidance:
+      - Archive only after the tests, flake8 and the Scenario-to-test check pass, and commit the archive on the same branch as the code

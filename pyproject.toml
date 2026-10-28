@@ -40,7 +40,7 @@ dependencies = [
     "sqlparse",
     "lupa",
     "netaddr",
-    "webauthn<1",
+    "webauthn>=3,<4",
     "bleach[css]",
     "django-admin-sortable2",
     "icalendar",

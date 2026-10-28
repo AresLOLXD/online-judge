@@ -2,7 +2,6 @@ import json
 from operator import attrgetter, itemgetter
 
 import pyotp
-import webauthn
 from django import forms
 from django.conf import settings
 from django.contrib.auth.forms import AuthenticationForm
@@ -14,11 +13,13 @@ from django.forms import BooleanField, CharField, ChoiceField, Form, ModelForm, 
 from django.urls import reverse_lazy
 from django.utils.text import format_lazy
 from django.utils.translation import gettext_lazy as _, ngettext_lazy
+from webauthn import verify_authentication_response
 
 from judge.models import Contest, Language, Organization, Problem, ProblemPointsVote, Profile, Submission, \
     WebAuthnCredential
 from judge.utils.mail import validate_email_domain
 from judge.utils.subscription import newsletter_id
+from judge.utils.two_factor import webauthn_decode
 from judge.widgets import AceWidget, MartorWidget, Select2MultipleWidget, Select2Widget
 
 TOTP_CODE_LENGTH = 6
@@ -243,29 +244,32 @@ class TwoFactorLoginForm(TOTPForm):
             if not self.webauthn_challenge:
                 raise ValidationError(_('No WebAuthn challenge issued.'))
 
-            response = json.loads(self.cleaned_data['webauthn_response'])
+            try:
+                response = json.loads(self.cleaned_data['webauthn_response'])
+            except (ValueError, RecursionError):
+                response = None
+            if not isinstance(response, dict):
+                raise ValidationError(_('Invalid WebAuthn response.'))
+
             try:
                 credential = self.profile.webauthn_credentials.get(cred_id=response.get('id', ''))
             except WebAuthnCredential.DoesNotExist:
                 raise ValidationError(_('Invalid WebAuthn credential ID.'))
 
-            user = credential.webauthn_user
-            # Work around a useless check in the webauthn package.
-            user.credential_id = credential.cred_id
-            assertion = webauthn.WebAuthnAssertionResponse(
-                webauthn_user=user,
-                assertion_response=response.get('response'),
-                challenge=self.webauthn_challenge,
-                origin=self.webauthn_origin,
-                uv_required=False,
-            )
-
             try:
-                sign_count = assertion.verify()
+                verified = verify_authentication_response(
+                    credential=response,
+                    expected_challenge=webauthn_decode(self.webauthn_challenge),
+                    expected_rp_id=settings.WEBAUTHN_RP_ID,
+                    expected_origin=self.webauthn_origin,
+                    credential_public_key=webauthn_decode(credential.public_key),
+                    credential_current_sign_count=credential.counter,
+                    require_user_verification=False,
+                )
             except Exception as e:
                 raise ValidationError(str(e))
 
-            credential.counter = sign_count
+            credential.counter = verified.new_sign_count
             credential.save(update_fields=['counter'])
         elif totp_or_scratch_code:
             if self.profile.is_totp_enabled and self.profile.check_totp_code(totp_or_scratch_code):

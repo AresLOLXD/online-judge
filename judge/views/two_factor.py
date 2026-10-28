@@ -1,26 +1,28 @@
 import base64
 import json
-import os
 from io import BytesIO
 
 import pyotp
 import qrcode
-import webauthn
 from django.conf import settings
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import RedirectURLMixin
-from django.http import Http404, HttpResponse, HttpResponseBadRequest, HttpResponseRedirect, JsonResponse
+from django.db import IntegrityError, transaction
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext as _, gettext_lazy
 from django.views.generic import FormView, View
 from django.views.generic.base import ContextMixin
 from django.views.generic.detail import SingleObjectMixin
+from webauthn import generate_authentication_options, generate_registration_options, options_to_json, \
+    verify_registration_response
+from webauthn.helpers.structs import AttestationConveyancePreference, AuthenticatorSelectionCriteria, \
+    PublicKeyCredentialDescriptor, UserVerificationRequirement
 
 from judge.forms import TOTPEnableForm, TOTPForm, TwoFactorLoginForm
-from judge.jinja2.gravatar import gravatar
 from judge.models import WebAuthnCredential
-from judge.utils.two_factor import WebAuthnJSONEncoder, webauthn_encode
+from judge.utils.two_factor import webauthn_decode, webauthn_encode
 from judge.utils.views import TitleMixin
 
 
@@ -138,29 +140,32 @@ class WebAuthnView(LoginRequiredMixin, View):
         return super(WebAuthnView, self).dispatch(request, *args, **kwargs)
 
 
+def stored_credential_descriptors(profile):
+    return [PublicKeyCredentialDescriptor(id=webauthn_decode(cred_id))
+            for cred_id in profile.webauthn_credentials.values_list('cred_id', flat=True)]
+
+
 class WebAuthnAttestationView(WebAuthnView):
     def get(self, request, *args, **kwargs):
-        challenge = os.urandom(32)
-        request.session['webauthn_attest'] = webauthn_encode(challenge)
-        data = webauthn.WebAuthnMakeCredentialOptions(
-            challenge=challenge,
+        options = generate_registration_options(
             rp_id=settings.WEBAUTHN_RP_ID,
             rp_name=settings.SITE_NAME,
             user_id=request.profile.webauthn_id,
-            username=request.user.username,
-            display_name=request.user.username,
-            user_verification='discouraged',
-            icon_url=gravatar(request.user.email),
-            attestation='none',
-        ).registration_dict
-        data['excludeCredentials'] = [{
-            'type': 'public-key',
-            'id': {'_bytes': credential.cred_id},
-        } for credential in request.profile.webauthn_credentials.all()]
-        return JsonResponse(data, encoder=WebAuthnJSONEncoder)
+            user_name=request.user.username,
+            user_display_name=request.user.username,
+            attestation=AttestationConveyancePreference.NONE,
+            authenticator_selection=AuthenticatorSelectionCriteria(
+                user_verification=UserVerificationRequirement.DISCOURAGED,
+            ),
+            exclude_credentials=stored_credential_descriptors(request.profile),
+        )
+        request.session['webauthn_attest'] = webauthn_encode(options.challenge)
+        return HttpResponse(options_to_json(options), content_type='application/json')
 
     def post(self, request, *args, **kwargs):
-        if not request.session.get('webauthn_attest'):
+        # A challenge is good for one attempt, whether or not it verifies.
+        challenge = request.session.pop('webauthn_attest', None)
+        if not challenge:
             return HttpResponseBadRequest()
 
         if 'credential' not in request.POST or len(request.POST['credential']) > 65536:
@@ -169,28 +174,27 @@ class WebAuthnAttestationView(WebAuthnView):
         if 'name' not in request.POST or len(request.POST['name']) > 100:
             return HttpResponseBadRequest(_('Invalid name'))
 
-        credential = json.loads(request.POST['credential'])
-
-        response = webauthn.WebAuthnRegistrationResponse(
-            rp_id=settings.WEBAUTHN_RP_ID,
-            origin='https://' + request.get_host(),
-            registration_response=credential['response'],
-            challenge=request.session['webauthn_attest'],
-            none_attestation_permitted=True,
-        )
-
         try:
-            credential = response.verify()
+            # The raw JSON text goes in: the library rejects invalid JSON and non-objects itself.
+            verified = verify_registration_response(
+                credential=request.POST['credential'],
+                expected_challenge=webauthn_decode(challenge),
+                expected_rp_id=settings.WEBAUTHN_RP_ID,
+                expected_origin='https://' + request.get_host(),
+            )
         except Exception as e:
             return HttpResponseBadRequest(str(e))
 
-        model = WebAuthnCredential(
-            user=request.profile, name=request.POST['name'],
-            cred_id=credential.credential_id.decode('ascii'),
-            public_key=credential.public_key.decode('ascii'),
-            counter=credential.sign_count,
-        )
-        model.save()
+        try:
+            with transaction.atomic():
+                WebAuthnCredential.objects.create(
+                    user=request.profile, name=request.POST['name'],
+                    cred_id=webauthn_encode(verified.credential_id),
+                    public_key=webauthn_encode(verified.credential_public_key),
+                    counter=verified.sign_count,
+                )
+        except IntegrityError:
+            return HttpResponseBadRequest(_('This security key is already registered'))
 
         if not request.profile.is_webauthn_enabled:
             request.profile.is_webauthn_enabled = True
@@ -200,14 +204,13 @@ class WebAuthnAttestationView(WebAuthnView):
 
 class WebAuthnAttestView(WebAuthnView):
     def get(self, request, *args, **kwargs):
-        challenge = os.urandom(32)
-        request.session['webauthn_assert'] = webauthn_encode(challenge)
-        data = webauthn.WebAuthnAssertionOptions(
-            [credential.webauthn_user for credential in
-             request.profile.webauthn_credentials.select_related('user__user')],
-            challenge,
-        ).assertion_dict
-        return JsonResponse(data, encoder=WebAuthnJSONEncoder)
+        options = generate_authentication_options(
+            rp_id=settings.WEBAUTHN_RP_ID,
+            allow_credentials=stored_credential_descriptors(request.profile),
+            user_verification=UserVerificationRequirement.DISCOURAGED,
+        )
+        request.session['webauthn_assert'] = webauthn_encode(options.challenge)
+        return HttpResponse(options_to_json(options), content_type='application/json')
 
 
 class WebAuthnDeleteView(SingleObjectMixin, WebAuthnView):
@@ -234,7 +237,11 @@ class TwoFactorLoginView(RedirectURLMixin, TOTPView, ContextMixin):
 
     def get_form_kwargs(self):
         result = super().get_form_kwargs()
-        result['webauthn_challenge'] = self.request.session.get('webauthn_assert')
+        # A challenge is good for one attempt, whether or not it verifies.
+        if self.request.method == 'POST':
+            result['webauthn_challenge'] = self.request.session.pop('webauthn_assert', None)
+        else:
+            result['webauthn_challenge'] = self.request.session.get('webauthn_assert')
         result['webauthn_origin'] = 'https://' + self.request.get_host()
         return result
 

@@ -2,10 +2,12 @@
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
-from django.test import TestCase, override_settings
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from social_core.exceptions import AuthInputError
 
 from judge.models import Language
+from judge.social_auth import SocialAuthExceptionMiddleware, verify_email
 
 
 @override_settings(TURNSTILE_SITE_KEY='test-site-key', TURNSTILE_SECRET_KEY='test-secret')
@@ -78,3 +80,23 @@ class FooterSourceLinkTestCase(TestCase):
     def test_homepage_footer_contains_source_link(self):
         response = self.client.get(reverse('home'))
         self.assertContains(response, 'https://github.com/AresLOLXD/online-judge')
+
+
+class VerifyEmailTestCase(SimpleTestCase):
+    def test_missing_email_raises_auth_input_error(self):
+        for email in (None, ''):
+            with self.subTest(email=email):
+                with self.assertRaises(AuthInputError):
+                    verify_email(None, {'email': email})
+
+    def test_present_email_passes(self):
+        self.assertIsNone(verify_email(None, {'email': 'user@example.com'}))
+
+    def test_middleware_redirects_with_library_message(self):
+        response = SocialAuthExceptionMiddleware(lambda request: None).process_exception(
+            RequestFactory().get('/'), AuthInputError(None, code='profile_email_missing'),
+        )
+        self.assertEqual(
+            response.url,
+            reverse('social_auth_error') + '?message=The%20provider%20did%20not%20supply%20an%20email%20address.',
+        )

@@ -1,9 +1,9 @@
 [project]
 name = "online-judge"
 version = "0.0.0"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.13,<3.15"
 dependencies = [
-    "Django>=4.2,<5",
+    "Django>=5.2,<5.3",
     "django_compressor>=3",
     "django-mptt>=0.13",
     "django-registration-redux>=2.10",
@@ -16,8 +16,8 @@ dependencies = [
     "lxml_html_clean",
     "Pygments",
     "mistune<2",
-    "social-auth-core==4.3.0",
-    "social-auth-app-django==5.0.0",
+    "social-auth-core>=6",
+    "social-auth-app-django>=7",
     "pytz",
     "django-statici18n",
     "pika",
@@ -34,7 +34,7 @@ dependencies = [
     "pillow>=13.0.0",
     "jsonfield",
     "pymoss",
-    "packaging<22",
+    "packaging",
     "celery",
     "ansi2html",
     "sqlparse",
@@ -44,8 +44,6 @@ dependencies = [
     "bleach[css]",
     "django-admin-sortable2",
     "icalendar",
-    # This is a celery dependency whose latest major version is breaking everything.
-    "importlib-metadata<5",
 ]
 
 [project.optional-dependencies]

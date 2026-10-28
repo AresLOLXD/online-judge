@@ -28,14 +28,23 @@ no verify command; verify is defined below as a Superpowers step.
    separate file under `docs/superpowers/specs/`.
 3. **One task list.** `tasks.md` is the only master task list. A plan from `superpowers:writing-plans`
    details one group of those tasks and is saved at `openspec/changes/<change>/plans/<change>-<group>.md`.
-   Never keep a parallel list of tasks.
-4. **Flow per change.** `/opsx:explore` or `superpowers:brainstorming` -> `/opsx:propose` -> review by the
-   maintainer -> `superpowers:writing-plans` per task group -> `superpowers:subagent-driven-development`
+   Never keep a parallel list of tasks. Each task in a plan names the `tasks.md` ids it covers (for example
+   `tasks.md 1.1-1.2`) and the controller ticks those checkboxes: `/opsx:apply` numbers tasks 1..N while a
+   plan numbers its own "Task N", so never tick by plan number. The `Spec:` header of a plan points to the
+   change's `design.md` and `specs/`; do not restate there the scope, out-of-scope list or constraints that
+   already live in `proposal.md` and `design.md`, and keep the plan's Review Focus for what the Scenarios do
+   not cover.
+4. **Flow per change.** `/opsx:explore` or `superpowers:brainstorming` (the design conversation, where the
+   maintainer decides) -> `/opsx:propose` -> review by the maintainer -> `superpowers:writing-plans` per task
+   group -> `superpowers:subagent-driven-development`
    with TDD (it replaces `/opsx:apply` as the executor; the controller ticks the checkbox in `tasks.md`
    after each task passes its review) -> verify -> `/opsx:archive` -> `superpowers:finishing-a-development-branch`.
+   `/opsx:propose` writes every artifact in one step, so it never replaces the design conversation: run it
+   only after the maintainer has settled the design, and show the artifacts for review before any plan.
 5. **Scenarios and tests.** Every Scenario (Given/When/Then) of a delta spec has at least one test, and
    `tasks.md` records it under each group as `Covers: <capability> / <requirement> / <scenario>`. A test
-   that maps to no Scenario, or a Scenario with no test, is reported in verify.
+   that maps to no Scenario, or a Scenario with no test, is reported in verify. A test that covers a Scenario
+   carries `Scenario: <scenario name>` in its docstring, so the mapping can be checked with grep.
 6. **Verify.** Before archiving: run the full test suite and `uv run flake8` and read the output
    (`superpowers:verification-before-completion`), then list every Scenario with the test that covers it and
    every test added by the change that covers no Scenario. The final whole-branch reviewer reports this list.

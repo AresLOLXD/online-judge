@@ -166,13 +166,13 @@ class WebAuthnAttestationView(WebAuthnView):
         # A challenge is good for one attempt, whether or not it verifies.
         challenge = request.session.pop('webauthn_attest', None)
         if not challenge:
-            return HttpResponseBadRequest()
+            return HttpResponseBadRequest(content_type='text/plain')
 
         if 'credential' not in request.POST or len(request.POST['credential']) > 65536:
-            return HttpResponseBadRequest(_('Invalid WebAuthn response'))
+            return HttpResponseBadRequest(_('Invalid WebAuthn response'), content_type='text/plain')
 
         if 'name' not in request.POST or len(request.POST['name']) > 100:
-            return HttpResponseBadRequest(_('Invalid name'))
+            return HttpResponseBadRequest(_('Invalid name'), content_type='text/plain')
 
         try:
             # The raw JSON text goes in: the library rejects invalid JSON and non-objects itself.
@@ -183,7 +183,7 @@ class WebAuthnAttestationView(WebAuthnView):
                 expected_origin='https://' + request.get_host(),
             )
         except Exception as e:
-            return HttpResponseBadRequest(str(e))
+            return HttpResponseBadRequest(str(e), content_type='text/plain')
 
         try:
             with transaction.atomic():
@@ -194,7 +194,7 @@ class WebAuthnAttestationView(WebAuthnView):
                     counter=verified.sign_count,
                 )
         except IntegrityError:
-            return HttpResponseBadRequest(_('This security key is already registered'))
+            return HttpResponseBadRequest(_('This security key is already registered'), content_type='text/plain')
 
         if not request.profile.is_webauthn_enabled:
             request.profile.is_webauthn_enabled = True

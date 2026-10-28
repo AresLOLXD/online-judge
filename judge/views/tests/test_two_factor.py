@@ -1,12 +1,15 @@
 import hashlib
+import html
 import json
 import os
+import re
 import struct
 
 import cbor2
 import pyotp
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -100,6 +103,7 @@ class WebAuthnDeleteTestCase(TwoFactorTestCase):
         self.assertEqual(response.status_code, 404)
         self.assertTrue(WebAuthnCredential.objects.filter(pk=other.pk).exists())
 
+    @override_settings(DMOJ_REQUIRE_STAFF_2FA=True)
     def test_staff_without_totp_cannot_delete_last_key(self):
         self.profile.user.is_staff = True
         self.profile.user.save(update_fields=['is_staff'])
@@ -121,16 +125,27 @@ ORIGIN = 'https://testserver'
 
 
 class SoftwareAuthenticator:
-    """A minimal EC P-256 authenticator with `none` attestation, so tests can answer real WebAuthn ceremonies."""
+    """A minimal EC P-256 (or Ed25519) authenticator with `none` attestation, so tests can answer real ceremonies."""
 
-    def __init__(self):
-        self.key = ec.generate_private_key(ec.SECP256R1())
+    def __init__(self, alg='ES256'):
+        self.alg = alg
         self.credential_id = os.urandom(16)
         self.sign_count = 0
-        numbers = self.key.public_key().public_numbers()
-        self.public_key = cbor2.dumps({
-            1: 2, 3: -7, -1: 1, -2: numbers.x.to_bytes(32, 'big'), -3: numbers.y.to_bytes(32, 'big'),
-        })
+        if alg == 'EdDSA':
+            self.key = ed25519.Ed25519PrivateKey.generate()
+            raw = self.key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+            self.public_key = cbor2.dumps({1: 1, 3: -8, -1: 6, -2: raw})
+        else:
+            self.key = ec.generate_private_key(ec.SECP256R1())
+            numbers = self.key.public_key().public_numbers()
+            self.public_key = cbor2.dumps({
+                1: 2, 3: -7, -1: 1, -2: numbers.x.to_bytes(32, 'big'), -3: numbers.y.to_bytes(32, 'big'),
+            })
+
+    def sign(self, data):
+        if self.alg == 'EdDSA':
+            return self.key.sign(data)
+        return self.key.sign(data, ec.ECDSA(hashes.SHA256()))
 
     def client_data(self, ceremony, options, origin):
         return json.dumps({
@@ -161,7 +176,7 @@ class SoftwareAuthenticator:
             self.sign_count += 1
         client_data = self.client_data('get', options, origin)
         authenticator_data = self.authenticator_data(options['rpId'], 0x01)
-        signature = self.key.sign(authenticator_data + hashlib.sha256(client_data).digest(), ec.ECDSA(hashes.SHA256()))
+        signature = self.sign(authenticator_data + hashlib.sha256(client_data).digest())
         return {
             'id': webauthn_encode(self.credential_id),
             'rawId': webauthn_encode(self.credential_id),
@@ -224,9 +239,25 @@ class WebAuthnRegistrationTestCase(TwoFactorTestCase):
         self.assertTrue(self.profile.is_webauthn_enabled)
         self.assertNotIn('webauthn_attest', self.client.session)
 
+    def test_eddsa_round_trip(self):
+        authenticator = SoftwareAuthenticator(alg='EdDSA')
+        self.assertEqual(self.register(authenticator.create(self.get_options(), ORIGIN)).status_code, 200)
+
+        session = self.client.session
+        del session['2fa_passed']
+        session.save()
+        options = json.loads(self.client.get(reverse('webauthn_assert')).content)
+        answer = authenticator.get(options, ORIGIN)
+        response = self.client.post(reverse('login_2fa'), {'webauthn_response': json.dumps(answer)})
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(self.client.session['2fa_passed'])
+        self.assertEqual(WebAuthnCredential.objects.get().counter, authenticator.sign_count)
+
     def test_wrong_origin(self):
         response = self.register(self.authenticator.create(self.get_options(), 'https://evil.example'))
         self.assert_rejected(response, 'Unexpected client data origin')
+        # The message echoes client-controlled text, so it must not be served as HTML.
+        self.assertTrue(response['Content-Type'].startswith('text/plain'))
 
     def test_wrong_challenge(self):
         stale = self.get_options()
@@ -299,6 +330,25 @@ class WebAuthnLoginTestCase(TwoFactorTestCase):
         self.assertContains(response, message)
         self.assertNotIn('2fa_passed', self.client.session)
 
+    def test_failed_attempt_does_not_echo_the_response(self):
+        marker = 'STALE-RESPONSE-MARKER'
+        self.get_options()
+        response = self.login(json.dumps({'marker': marker}))
+        self.assertContains(response, 'Invalid WebAuthn credential ID.')
+        self.assertNotContains(response, marker)
+
+    def test_totp_works_after_a_failed_key_attempt(self):
+        self.get_options()
+        failed = self.login(json.dumps({'marker': 'x'}))
+        self.assertNotIn('2fa_passed', self.client.session)
+        # Submit the form as a browser would: with whatever value the hidden field was re-rendered with.
+        hidden = re.search(r'name="webauthn_response"(?: value="([^"]*)")?', failed.content.decode())
+        data = {'totp_or_scratch_code': pyotp.TOTP(self.profile.totp_key).now(),
+                'webauthn_response': html.unescape(hidden.group(1) or '')}
+        response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(self.client.session['2fa_passed'])
+
     def test_options_only_list_own_credentials(self):
         self.store(create_user(username='other').profile, SoftwareAuthenticator())
         options = self.get_options()
@@ -365,6 +415,14 @@ class WebAuthnLoginTestCase(TwoFactorTestCase):
         self.assert_rejected(self.login(json.dumps(answer)), 'was not greater than current count')
         self.credential.refresh_from_db()
         self.assertEqual(self.credential.counter, 5)
+
+    def test_forged_signature_is_rejected(self):
+        forger = SoftwareAuthenticator()
+        forger.credential_id = self.authenticator.credential_id
+        answer = forger.get(self.get_options(), ORIGIN)
+        self.assert_rejected(self.login(json.dumps(answer)), 'Could not verify authentication signature')
+        self.credential.refresh_from_db()
+        self.assertEqual(self.credential.counter, 0)
 
     def test_zero_counter_is_accepted(self):
         answer = self.authenticator.get(self.get_options(), ORIGIN, count=False)

@@ -1,3 +1,5 @@
+import re
+
 from django.test import SimpleTestCase
 from lxml import html
 
@@ -154,3 +156,89 @@ class TestFragmentUtils(SimpleTestCase):
         self.assertEqual(tree.text, 'z')
 
         self.assertHTMLEqual(fragment_tree_to_str(tree), 'z<p>a</p><p>b</p>')
+
+
+class TestAutolinkInjection(SimpleTestCase):
+    USER_STYLES = ('comment', 'default', 'self-description', 'ticket', 'organization-about')
+
+    def render(self, source, style):
+        return html.fragment_fromstring(str(markdown(source, style)), create_parent='div')
+
+    def test_no_event_handler_attributes(self):
+        sources = (
+            '<http://x.com/"onmouseover="alert(1)>',
+            'http://x.com/"onmouseover="alert(1)',
+            '<a"onmouseover="alert(1)@b.c>',
+            '<x:"onmouseover="alert(1)>',
+            '<ftp://h/"onmouseover="alert(1)>',
+            '<mailto:a"onmouseover="alert(1)@b.c>',
+        )
+        for style in self.USER_STYLES:
+            for source in sources:
+                with self.subTest(style=style, source=source):
+                    tree = self.render(source, style)
+                    for element in tree.iter():
+                        for name in element.attrib:
+                            self.assertFalse(name.lower().startswith('on'), (element.tag, name))
+
+    def test_href_is_the_escaped_url(self):
+        for source in ('<http://x.com/"y>', 'http://x.com/"y'):
+            with self.subTest(source=source):
+                links = self.render(source, 'comment').findall('.//a')
+                self.assertEqual(len(links), 1)
+                self.assertEqual(links[0].get('href'), 'http://x.com/"y')
+                self.assertEqual(links[0].get('rel'), 'nofollow')
+
+    def test_single_quote_in_url(self):
+        tree = self.render("<http://x.com/'onmouseover='y>", 'comment')
+        for element in tree.iter():
+            for name in element.attrib:
+                self.assertFalse(name.lower().startswith('on'), (element.tag, name))
+        links = tree.findall('.//a')
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0].get('href'), "http://x.com/'onmouseover='y")
+
+    def test_normal_autolinks_unchanged(self):
+        links = self.render('<https://example.com/page>', 'comment').findall('.//a')
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0].get('href'), 'https://example.com/page')
+        self.assertEqual(links[0].get('rel'), 'nofollow')
+        self.assertEqual(links[0].text, 'https://example.com/page')
+
+        links = self.render('<a@b.c>', 'comment').findall('.//a')
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0].get('href'), 'mailto:a@b.c')
+        self.assertEqual(links[0].text, 'a@b.c')
+
+        source = 'see https://example.com/x?a=1&b=2 now'
+        links = self.render(source, 'comment').findall('.//a')
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0].get('href'), 'https://example.com/x?a=1&b=2')
+        raw = str(markdown(source, 'comment'))
+        self.assertIn('&amp;b=2', raw)
+        self.assertNotIn('&amp;amp;', raw)
+
+    def test_dangerous_schemes_are_dropped(self):
+        sources = (
+            '<javascript:alert(1)>',
+            '<JaVaScRiPt:alert(1)>',
+            '<vbscript:msgbox(1)>',
+            '<java\tscript:alert(1)>',
+            '<javascript:alert(1)@b.c>',
+            '<&#106;avascript:alert(1)>',
+            '<java&Tab;script:alert(1)>',
+        )
+        for style in self.USER_STYLES:
+            for source in sources:
+                with self.subTest(style=style, source=source):
+                    for link in self.render(source, style).iter('a'):
+                        href = re.sub(r'[^a-z0-9/:]+', '', (link.get('href') or '').lower())
+                        self.assertFalse(href.startswith(('javascript:', 'vbscript:')), href)
+
+        links = self.render('<javascript:alert(1)>', 'comment').findall('.//a')
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0].text, 'javascript:alert(1)')
+
+        # The ampersand of an entity-encoded scheme must itself be escaped in the href.
+        self.assertIn('&amp;#106;', str(markdown('<&#106;avascript:alert(1)>', 'comment')))
+        self.assertIn('&amp;Tab;', str(markdown('<java&Tab;script:alert(1)>', 'comment')))

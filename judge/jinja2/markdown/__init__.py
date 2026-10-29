@@ -55,7 +55,8 @@ class AwesomeRenderer(MathRenderer, mistune.Renderer):
         return ''
 
     def autolink(self, link, is_email=False):
-        text = link = mistune.escape(link)
+        text = mistune.escape(link)
+        link = mistune.escape_link(link)
         if is_email:
             link = 'mailto:%s' % link
         return '<a href="%s"%s>%s</a>' % (link, self._link_rel(link), text)

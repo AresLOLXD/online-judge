@@ -192,7 +192,7 @@
                                 });
                             }
                         } else {
-                            currentTab.html('<p>Nothing to preview</p>');
+                            currentTab.empty().append($('<p>').text(typeof gettext === 'function' ? gettext('Nothing to preview') : 'Nothing to preview'));
                         }
                     },
                     error: function (response) {

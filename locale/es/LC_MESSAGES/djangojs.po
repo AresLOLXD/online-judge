@@ -80,3 +80,6 @@ msgid_plural "%(cnt)d submissions on %(date)s"
 msgstr[0] "%(cnt)d envío el %(date)s"
 msgstr[1] "%(cnt)d envíos el %(date)s"
 
+#: martor/static/martor/js/martor.js:195
+msgid "Nothing to preview"
+msgstr "Nada que previsualizar"

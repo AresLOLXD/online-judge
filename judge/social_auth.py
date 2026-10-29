@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils.translation import gettext as _, gettext_lazy
 from requests import HTTPError
 from reversion import revisions
 from social_core.backends.github import GithubOAuth2
@@ -53,12 +54,13 @@ def verify_email(backend, details, *args, **kwargs):
 
 
 class UsernameForm(forms.Form):
-    username = forms.RegexField(regex=r'^\w+$', max_length=30, label='Username',
-                                error_messages={'invalid': 'A username must contain letters, numbers, or underscores.'})
+    username = forms.RegexField(regex=r'^\w+$', max_length=30, label=gettext_lazy('Username'),
+                                error_messages={'invalid': gettext_lazy('A username must contain letters, '
+                                                                        'numbers, or underscores.')})
 
     def clean_username(self):
         if User.objects.filter(username=self.cleaned_data['username']).exists():
-            raise forms.ValidationError('Sorry, the username is taken.')
+            raise forms.ValidationError(_('Sorry, the username is taken.'))
         return self.cleaned_data['username']
 
 

@@ -20,7 +20,7 @@ class DefaultContestFormat(BaseContestFormat):
     @classmethod
     def validate(cls, config):
         if config is not None and (not isinstance(config, dict) or config):
-            raise ValidationError('default contest expects no config or empty dict as config')
+            raise ValidationError(_('default contest expects no config or empty dict as config'))
 
     def __init__(self, contest, config):
         super(DefaultContestFormat, self).__init__(contest, config)

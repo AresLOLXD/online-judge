@@ -205,7 +205,7 @@ class Contest(models.Model):
     def clean(self):
         # Django will complain if you didn't fill in start_time or end_time, so we don't have to.
         if self.start_time and self.end_time and self.start_time >= self.end_time:
-            raise ValidationError('What is this? A contest that ended before it starts?')
+            raise ValidationError(_('What is this? A contest that ended before it starts?'))
         self.format_class.validate(self.format_config)
 
         try:
@@ -213,10 +213,10 @@ class Contest(models.Model):
             # so test it to see if the script returns a valid label.
             label = self.get_label_for_problem(0)
         except Exception as e:
-            raise ValidationError('Contest problem label script: %s' % e)
+            raise ValidationError(_('Contest problem label script: %s') % e)
         else:
             if not isinstance(label, str):
-                raise ValidationError('Contest problem label script: script should return a string.')
+                raise ValidationError(_('Contest problem label script: script should return a string.'))
 
     def is_in_contest(self, user):
         if user.is_authenticated:

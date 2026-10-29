@@ -72,7 +72,7 @@ class TOTPEnableView(TOTPView):
 
     def post(self, request, *args, **kwargs):
         if not request.session['totp_enable_key']:
-            return HttpResponseBadRequest('No TOTP key generated on server side?')
+            return HttpResponseBadRequest(_('No TOTP key generated on server side?'))
         return super(TOTPEnableView, self).post(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):

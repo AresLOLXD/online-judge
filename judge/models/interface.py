@@ -29,7 +29,7 @@ def validate_regex(regex):
     try:
         re.compile(regex, re.VERBOSE)
     except re.error as e:
-        raise ValidationError('Invalid regex: %s' % e.message)
+        raise ValidationError(_('Invalid regex: %s') % e.message)
 
 
 class NavigationBar(MPTTModel):

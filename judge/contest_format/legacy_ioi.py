@@ -27,13 +27,13 @@ class LegacyIOIContestFormat(DefaultContestFormat):
             return
 
         if not isinstance(config, dict):
-            raise ValidationError('IOI-styled contest expects no config or dict as config')
+            raise ValidationError(_('IOI-styled contest expects no config or dict as config'))
 
         for key, value in config.items():
             if key not in cls.config_defaults:
-                raise ValidationError('unknown config key "%s"' % key)
+                raise ValidationError(_('unknown config key "%s"') % key)
             if not isinstance(value, type(cls.config_defaults[key])):
-                raise ValidationError('invalid type for config key "%s"' % key)
+                raise ValidationError(_('invalid type for config key "%s"') % key)
 
     def __init__(self, contest, config):
         self.config = self.config_defaults.copy()

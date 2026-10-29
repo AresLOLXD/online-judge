@@ -6736,8 +6736,8 @@ msgstr "No tiene permiso para desactivar usuarios."
 #, python-format
 msgid "%d user was banned."
 msgid_plural "%d users were banned."
-msgstr[0] "Se ha baneado a %d usuario."
-msgstr[1] "Se ha baneado a %d usuarios."
+msgstr[0] "Se ha desactivado a %d usuario."
+msgstr[1] "Se ha desactivado a %d usuarios."
 
 #: judge/admin/profile.py:160
 msgid "Mute users"
@@ -6754,7 +6754,7 @@ msgstr[1] "Se ha silenciado a %d usuarios."
 msgid "AtCoder-styled contest expects no config or dict as config"
 msgstr ""
 "Un concurso de estilo AtCoder espera que no haya configuración o que "
-"sea un diccionario."
+"sea un diccionario"
 
 #: judge/contest_format/atcoder.py:36 judge/contest_format/ecoo.py:38
 #: judge/contest_format/icpc.py:36 judge/contest_format/legacy_ioi.py:34
@@ -6778,25 +6778,25 @@ msgstr "valor \"%s\" no válido para la clave de configuración \"%s\""
 msgid "default contest expects no config or empty dict as config"
 msgstr ""
 "El concurso predeterminado espera que no haya configuración o que sea "
-"un diccionario vacío."
+"un diccionario vacío"
 
 #: judge/contest_format/ecoo.py:34
 msgid "ECOO-styled contest expects no config or dict as config"
 msgstr ""
 "Un concurso de estilo ECOO espera que no haya configuración o que sea "
-"un diccionario."
+"un diccionario"
 
 #: judge/contest_format/icpc.py:32
 msgid "ICPC-styled contest expects no config or dict as config"
 msgstr ""
 "Un concurso de estilo ICPC espera que no haya configuración o que sea "
-"un diccionario."
+"un diccionario"
 
 #: judge/contest_format/legacy_ioi.py:30
 msgid "IOI-styled contest expects no config or dict as config"
 msgstr ""
 "Un concurso de estilo IOI espera que no haya configuración o que sea "
-"un diccionario."
+"un diccionario"
 
 #: judge/models/contest.py:118
 msgid "performance ceiling override"

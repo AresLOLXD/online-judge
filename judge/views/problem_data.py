@@ -47,7 +47,7 @@ def checker_args_cleaner(self):
 
 class ProblemDataForm(ModelForm):
     checker = forms.ChoiceField(choices=(('', '---------'),) + CHECKERS + (CUSTOM_CHECKER_CHOICE,),
-                                required=False)
+                                required=False, label=gettext_lazy('Checker'))
 
     def clean_zipfile(self):
         if hasattr(self, 'zip_valid') and not self.zip_valid:

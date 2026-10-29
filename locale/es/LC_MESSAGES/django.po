@@ -2827,7 +2827,7 @@ msgstr "Novato"
 
 #: judge/ratings.py:195
 msgid "Amateur"
-msgstr "Amateur"
+msgstr "Aficionado"
 
 #: judge/ratings.py:196
 msgid "Expert"
@@ -6270,3 +6270,456 @@ msgstr "Perfil del Administrador"
 msgid "Check all"
 msgstr "Seleccionar todo"
 
+#: judge/comments.py:35
+msgid "Please click on \"Preview\" before posting your comment."
+msgstr ""
+"Por favor, haga clic en \"Vista previa\" antes de publicar su comentario."
+
+#: judge/jinja2/datetime.py:31
+#, python-brace-format
+msgid "{time}"
+msgstr "{time}"
+
+#: judge/jinja2/datetime.py:32
+#, python-brace-format
+msgid "on {time}"
+msgstr "el {time}"
+
+#: judge/jinja2/filesize.py:33
+#, python-format
+msgid "%s B"
+msgstr "%s B"
+
+#: judge/jinja2/filesize.py:33
+#, python-format
+msgid "%s KB"
+msgstr "%s KB"
+
+#: judge/jinja2/filesize.py:33
+#, python-format
+msgid "%s MB"
+msgstr "%s MB"
+
+#: judge/jinja2/filesize.py:33
+#, python-format
+msgid "%s GB"
+msgstr "%s GB"
+
+#: judge/jinja2/filesize.py:33
+#, python-format
+msgid "%s TB"
+msgstr "%s TB"
+
+#: judge/jinja2/filesize.py:33
+#, python-format
+msgid "%s PB"
+msgstr "%s PB"
+
+#: judge/jinja2/filesize.py:40
+#, python-format
+msgid "%sB"
+msgstr "%sB"
+
+#: judge/jinja2/filesize.py:40
+#, python-format
+msgid "%sK"
+msgstr "%sK"
+
+#: judge/jinja2/filesize.py:40
+#, python-format
+msgid "%sM"
+msgstr "%sM"
+
+#: judge/jinja2/filesize.py:40
+#, python-format
+msgid "%sG"
+msgstr "%sG"
+
+#: judge/jinja2/filesize.py:40
+#, python-format
+msgid "%sT"
+msgstr "%sT"
+
+#: judge/jinja2/filesize.py:40
+#, python-format
+msgid "%sP"
+msgstr "%sP"
+
+#: judge/models/problem_data.py:41
+msgid "custom checker file"
+msgstr "archivo de verificador personalizado"
+
+#: judge/utils/problem_data.py:124
+msgid ""
+"YAML aliases (*reference) are not supported in init.yml; write out the "
+"repeated values."
+msgstr ""
+"Los alias de YAML (*reference) no se admiten en init.yml; escriba "
+"explícitamente los valores repetidos."
+
+#: judge/utils/problem_data.py:134
+#, python-format
+msgid "init.yml is too large (limit: %d bytes)."
+msgstr "init.yml es demasiado grande (límite: %d bytes)."
+
+#: judge/utils/problem_data.py:141
+#, python-format
+msgid "init.yml could not be parsed: %s"
+msgstr "No se pudo analizar init.yml: %s"
+
+#: judge/utils/problem_data.py:143
+msgid "init.yml must be a mapping."
+msgstr "init.yml debe ser un mapeo."
+
+#: judge/utils/problem_data.py:151
+#, python-format
+msgid "Expected an integer in init.yml, got: %s"
+msgstr "Se esperaba un entero en init.yml, pero se obtuvo: %s"
+
+#: judge/utils/problem_data.py:153
+#, python-format
+msgid "Integer out of range in init.yml: %s"
+msgstr "Entero fuera de rango en init.yml: %s"
+
+#: judge/utils/problem_data.py:161
+#, python-format
+msgid "Expected a list in init.yml, got: %s"
+msgstr "Se esperaba una lista en init.yml, pero se obtuvo: %s"
+
+#: judge/utils/problem_data.py:163
+#, python-format
+msgid "init.yml contains a list with more than %d items."
+msgstr "init.yml contiene una lista con más de %d elementos."
+
+#: judge/utils/problem_data.py:173
+#, python-format
+msgid "Checker %s is not supported and was ignored."
+msgstr "El verificador %s no es compatible y se ignoró."
+
+#: judge/utils/problem_data.py:176
+msgid "Checker arguments in init.yml must be a mapping."
+msgstr "Los argumentos del verificador en init.yml deben ser un mapeo."
+
+#: judge/utils/problem_data.py:180
+msgid "Checker arguments in init.yml must be plain JSON values."
+msgstr ""
+"Los argumentos del verificador en init.yml deben ser valores JSON simples."
+
+#: judge/utils/problem_data.py:185
+msgid "Every test case in init.yml must be a mapping."
+msgstr "Cada caso de prueba en init.yml debe ser un mapeo."
+
+#: judge/utils/problem_data.py:191
+#, python-format
+msgid "File name is too long: %s"
+msgstr "El nombre del archivo es demasiado largo: %s"
+
+#: judge/utils/problem_data.py:209
+#, python-format
+msgid "init.yml describes more than %d test cases."
+msgstr "init.yml describe más de %d casos de prueba."
+
+#: judge/utils/problem_data.py:242
+#, python-format
+msgid "Ignored init.yml keys: %s"
+msgstr "Claves de init.yml ignoradas: %s"
+
+#: judge/utils/problem_data.py:293
+#, python-format
+msgid "%d file in the zip is not used by any test case."
+msgid_plural "%d files in the zip are not used by any test case."
+msgstr[0] "%d archivo del zip no se usa en ningún caso de prueba."
+msgstr[1] "%d archivos del zip no se usan en ningún caso de prueba."
+
+#: judge/utils/problem_data.py:297
+#, python-format
+msgid "The zip contains more than %d input/output pairs."
+msgstr "El zip contiene más de %d pares de entrada/salida."
+
+#: judge/utils/problem_data.py:304
+#, python-format
+msgid ""
+"%d file in the zip could not be paired as input and output and was ignored."
+msgid_plural ""
+"%d files in the zip could not be paired as input and output and were ignored."
+msgstr[0] ""
+"%d archivo del zip no pudo emparejarse como entrada y salida y se ignoró."
+msgstr[1] ""
+"%d archivos del zip no pudieron emparejarse como entrada y salida y se "
+"ignoraron."
+
+#: judge/utils/problem_data.py:323
+msgid "A custom checker was selected but no checker file is attached."
+msgstr ""
+"Se seleccionó un verificador personalizado, pero no hay ningún archivo de "
+"verificador adjunto."
+
+#: judge/utils/problem_data.py:326
+msgid "How did you corrupt the checker file path?"
+msgstr "¿Cómo ha corrompido la ruta del archivo del verificador?"
+
+#: judge/views/problem_data.py:33
+msgid "Custom (Python script)"
+msgstr "Personalizado (script de Python)"
+
+#: judge/views/problem_data.py:75
+msgid "Checker file must not be named init.yml."
+msgstr "El archivo del verificador no debe llamarse init.yml."
+
+#: judge/views/problem_data.py:77
+msgid "Checker file must be a Python (.py) script."
+msgstr "El archivo del verificador debe ser un script de Python (.py)."
+
+#: judge/views/problem_data.py:83
+#, python-format
+msgid "Checker script contains disallowed constructs: %s"
+msgstr "El script del verificador contiene construcciones no permitidas: %s"
+
+#: judge/views/problem_data.py:95
+msgid "A checker script must be uploaded when using a custom checker."
+msgstr ""
+"Debe subirse un script de verificador al usar un verificador personalizado."
+
+#: judge/views/register.py:48
+msgid "Anti-bot verification failed. Please try again."
+msgstr "Falló la verificación antibot. Por favor, inténtelo de nuevo."
+
+#: judge/views/ticket.py:28
+msgid "Please click on \"Preview\" before creating your ticket."
+msgstr "Por favor, haga clic en \"Vista previa\" antes de crear su ticket."
+
+#: judge/views/two_factor.py:197
+msgid "This security key is already registered"
+msgstr "Esta clave de seguridad ya está registrada"
+
+#: martor/templates/martor/editor.html:5
+msgid "Editor"
+msgstr "Editor"
+
+#: martor/templates/martor/editor.html:6
+msgid "Preview"
+msgstr "Vista previa"
+
+#: martor/templates/martor/editor.html:11
+msgid "Uploading... please wait..."
+msgstr "Subiendo... por favor, espere..."
+
+#: martor/templates/martor/editor.html:18
+msgid "Nothing to preview"
+msgstr "Nada que previsualizar"
+
+#: martor/templates/martor/guide.html:4
+msgid "Markdown Guide"
+msgstr "Guía de Markdown"
+
+#: martor/templates/martor/guide.html:5
+#, python-format
+msgid ""
+"This site is powered by Markdown. For full documentation, <a "
+"href=\"%(doc_url)s\" target=\"_blank\">click here</a>."
+msgstr ""
+"Este sitio utiliza Markdown. Para consultar la documentación completa, <a "
+"href=\"%(doc_url)s\" target=\"_blank\">haga clic aquí</a>."
+
+#: martor/templates/martor/guide.html:9 martor/templates/martor/toolbar.html:26
+msgid "Code"
+msgstr "Código"
+
+#: martor/templates/martor/guide.html:10
+msgid "Or"
+msgstr "O"
+
+#: martor/templates/martor/guide.html:13
+msgid "... to Get"
+msgstr "... para obtener"
+
+#: martor/templates/martor/toolbar.html:4
+msgid "Bold"
+msgstr "Negrita"
+
+#: martor/templates/martor/toolbar.html:7
+msgid "Italic"
+msgstr "Cursiva"
+
+#: martor/templates/martor/toolbar.html:10
+msgid "Horizontal Line"
+msgstr "Línea horizontal"
+
+#: martor/templates/martor/toolbar.html:13
+#: martor/templates/martor/toolbar.html:16
+#: martor/templates/martor/toolbar.html:17
+#: martor/templates/martor/toolbar.html:18
+msgid "Heading"
+msgstr "Encabezado"
+
+#: martor/templates/martor/toolbar.html:22
+msgid "Pre or Code"
+msgstr "Preformateado o código"
+
+#: martor/templates/martor/toolbar.html:25
+msgid "Pre"
+msgstr "Preformateado"
+
+#: martor/templates/martor/toolbar.html:30
+msgid "Math"
+msgstr "Matemáticas"
+
+#: martor/templates/martor/toolbar.html:33
+msgid "Inline Math"
+msgstr "Matemáticas en línea"
+
+#: martor/templates/martor/toolbar.html:34
+msgid "Display Math"
+msgstr "Matemáticas en bloque"
+
+#: martor/templates/martor/toolbar.html:35
+msgid "LaTeX"
+msgstr "LaTeX"
+
+#: martor/templates/martor/toolbar.html:39
+msgid "Quote"
+msgstr "Cita"
+
+#: martor/templates/martor/toolbar.html:42
+msgid "Unordered List"
+msgstr "Lista no ordenada"
+
+#: martor/templates/martor/toolbar.html:45
+msgid "Ordered List"
+msgstr "Lista ordenada"
+
+#: martor/templates/martor/toolbar.html:49
+msgid "URL/Link"
+msgstr "URL/Enlace"
+
+#: martor/templates/martor/toolbar.html:52
+msgid "Insert Image Link"
+msgstr "Insertar enlace de imagen"
+
+#: martor/templates/martor/toolbar.html:56
+#: martor/templates/martor/toolbar.html:58
+msgid "Upload an Image"
+msgstr "Subir una imagen"
+
+#: martor/templates/martor/toolbar.html:61
+msgid "Direct Mention a User"
+msgstr "Mencionar directamente a un usuario"
+
+#: martor/templates/martor/toolbar.html:65
+msgid "Full Screen"
+msgstr "Pantalla completa"
+
+#: martor/templates/martor/toolbar.html:68
+msgid "Markdown Guide (Help)"
+msgstr "Guía de Markdown (ayuda)"
+
+#: martor/views.py:48
+#, python-format
+msgid "No users registered as `%(username)s` or user is unactived."
+msgstr ""
+"No hay usuarios registrados como `%(username)s` o el usuario está inactivo."
+
+#: martor/views.py:54
+msgid "Validation Failed for field `username`"
+msgstr "Falló la validación del campo `username`"
+
+#: templates/comments/media-js.html:221
+msgid ""
+"Looks like you're trying to post some source code!\n"
+"\n"
+"The comment section is not for posting source code.\n"
+"If you want to submit your solution, please use the \"Submit solution\" "
+"button.\n"
+"\n"
+"Are you sure you want to post this?"
+msgstr ""
+"¡Parece que está intentando publicar código fuente!\n"
+"\n"
+"La sección de comentarios no es para publicar código fuente.\n"
+"Si desea enviar su solución, utilice el botón \"Enviar solución\".\n"
+"\n"
+"¿Está seguro de que desea publicar esto?"
+
+#: templates/contest/list.html:266
+msgid "Search contests..."
+msgstr "Buscar concursos..."
+
+#: templates/contest/list.html:313
+msgid "There are no past contests."
+msgstr "No hay concursos pasados."
+
+#: templates/problem/data.html:369
+msgid ""
+"Upload a zip with the test case files (for example 1.in, 1.out, 2.in, "
+"2.out). If the problem has no cases yet, they are registered automatically "
+"when you save."
+msgstr ""
+"Suba un zip con los archivos de los casos de prueba (por ejemplo 1.in, "
+"1.out, 2.in, 2.out). Si el problema aún no tiene casos, estos se registran "
+"automáticamente al guardar."
+
+#: templates/problem/data.html:370
+msgid ""
+"Including an init.yml in the zip is faster: the cases and settings it "
+"describes replace the current ones. Settings this page cannot represent, for "
+"example other checker types or judge options, are ignored."
+msgstr ""
+"Incluir un init.yml en el zip es más rápido: los casos y la configuración "
+"que describe reemplazan a los actuales. La configuración que esta página no "
+"puede representar, por ejemplo otros tipos de verificador u opciones del "
+"juez, se ignora."
+
+#: templates/problem/data.html:371
+msgid ""
+"A new zip replaces the previous one, so it must contain all the cases, not "
+"only the new ones."
+msgstr ""
+"Un zip nuevo reemplaza al anterior, por lo que debe contener todos los "
+"casos, no solo los nuevos."
+
+#: templates/problem/data.html:372
+msgid "The checker and the other settings are configured below."
+msgstr "El verificador y el resto de la configuración se establecen más abajo."
+
+#: templates/problem/data.html:375
+msgid ""
+"Changing the cases does not rejudge existing submissions: they keep their "
+"previous verdict and points until they are rejudged."
+msgstr ""
+"Cambiar los casos no rejuzga los envíos existentes: conservan su veredicto y "
+"sus puntos anteriores hasta que se rejuzguen."
+
+#: templates/problem/data.html:376
+msgid ""
+"A rejudge sends each selected submission back to the judge queue at batch "
+"priority, below normal submissions, so it takes time proportional to the "
+"number of submissions. Verdict, points and per-case results are overwritten, "
+"and the change is recorded in the revision history as \"Rejudged\". When "
+"each submission finishes, user points, problem statistics and contest scores "
+"are recalculated."
+msgstr ""
+"Al rejuzgar, cada envío seleccionado vuelve a la cola de juicio con "
+"prioridad de lote, por debajo de los envíos normales, por lo que el proceso "
+"tarda un tiempo proporcional al número de envíos. El veredicto, los puntos y "
+"los resultados por caso se sobrescriben, y el cambio queda registrado en el "
+"historial de revisiones como \"Rejudged\". Cuando termina cada envío, se "
+"recalculan los puntos del usuario, las estadísticas del problema y las "
+"puntuaciones de los concursos."
+
+#: templates/problem/data.html:377
+msgid ""
+"Submissions locked by a finished contest are archived instead of rejudged "
+"only if the \"archive\" option of the Manage submissions form is selected, "
+"which it is by default."
+msgstr ""
+"Los envíos bloqueados por un concurso terminado se archivan en lugar de "
+"rejuzgarse solo si la opción \"Archivar envíos bloqueados\" del formulario "
+"Administrar envíos está seleccionada, lo cual ocurre por defecto."
+
+#: templates/problem/data.html:379
+msgid "Manage submissions to rejudge"
+msgstr "Administrar envíos para rejuzgar"
+
+#: templates/problem/manage_submission.html:153
+msgid "Archive locked submissions:"
+msgstr "Archivar envíos bloqueados:"

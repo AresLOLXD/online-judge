@@ -6394,7 +6394,7 @@ msgstr "init.yml contiene una lista con más de %d elementos."
 #: judge/utils/problem_data.py:173
 #, python-format
 msgid "Checker %s is not supported and was ignored."
-msgstr "El verificador %s no es compatible y se ignoró."
+msgstr "El verificador %s no se admite y se ignoró."
 
 #: judge/utils/problem_data.py:176
 msgid "Checker arguments in init.yml must be a mapping."
@@ -6554,11 +6554,11 @@ msgstr "Encabezado"
 
 #: martor/templates/martor/toolbar.html:22
 msgid "Pre or Code"
-msgstr "Preformateado o código"
+msgstr "Bloque o código en línea"
 
 #: martor/templates/martor/toolbar.html:25
 msgid "Pre"
-msgstr "Preformateado"
+msgstr "Bloque de código"
 
 #: martor/templates/martor/toolbar.html:30
 msgid "Math"
@@ -6702,9 +6702,9 @@ msgstr ""
 "prioridad de lote, por debajo de los envíos normales, por lo que el proceso "
 "tarda un tiempo proporcional al número de envíos. El veredicto, los puntos y "
 "los resultados por caso se sobrescriben, y el cambio queda registrado en el "
-"historial de revisiones como \"Rejudged\". Cuando termina cada envío, se "
-"recalculan los puntos del usuario, las estadísticas del problema y las "
-"puntuaciones de los concursos."
+"historial de revisiones como \"Rejudged\". Cuando termina de juzgarse cada "
+"envío, se recalculan los puntos del usuario, las estadísticas del problema y "
+"las puntuaciones de los concursos."
 
 #: templates/problem/data.html:377
 msgid ""
@@ -6723,3 +6723,145 @@ msgstr "Administrar envíos para rejuzgar"
 #: templates/problem/manage_submission.html:153
 msgid "Archive locked submissions:"
 msgstr "Archivar envíos bloqueados:"
+
+#: judge/admin/profile.py:145 judge/models/profile.py:336
+msgid "Deactivate users"
+msgstr "Desactivar usuarios"
+
+#: judge/admin/profile.py:148
+msgid "You do not have permission to deactivate users."
+msgstr "No tiene permiso para desactivar usuarios."
+
+#: judge/admin/profile.py:156
+#, python-format
+msgid "%d user was banned."
+msgid_plural "%d users were banned."
+msgstr[0] "Se ha baneado a %d usuario."
+msgstr[1] "Se ha baneado a %d usuarios."
+
+#: judge/admin/profile.py:160
+msgid "Mute users"
+msgstr "Silenciar usuarios"
+
+#: judge/admin/profile.py:163
+#, python-format
+msgid "%d user was muted."
+msgid_plural "%d users were muted."
+msgstr[0] "Se ha silenciado a %d usuario."
+msgstr[1] "Se ha silenciado a %d usuarios."
+
+#: judge/contest_format/atcoder.py:32
+msgid "AtCoder-styled contest expects no config or dict as config"
+msgstr ""
+"Un concurso de estilo AtCoder espera que no haya configuración o que "
+"sea un diccionario."
+
+#: judge/contest_format/atcoder.py:36 judge/contest_format/ecoo.py:38
+#: judge/contest_format/icpc.py:36 judge/contest_format/legacy_ioi.py:34
+#, python-format
+msgid "unknown config key \"%s\""
+msgstr "clave de configuración desconocida \"%s\""
+
+#: judge/contest_format/atcoder.py:38 judge/contest_format/ecoo.py:40
+#: judge/contest_format/icpc.py:38 judge/contest_format/legacy_ioi.py:36
+#, python-format
+msgid "invalid type for config key \"%s\""
+msgstr "tipo no válido para la clave de configuración \"%s\""
+
+#: judge/contest_format/atcoder.py:40 judge/contest_format/ecoo.py:42
+#: judge/contest_format/icpc.py:40
+#, python-format
+msgid "invalid value \"%s\" for config key \"%s\""
+msgstr "valor \"%s\" no válido para la clave de configuración \"%s\""
+
+#: judge/contest_format/default.py:23
+msgid "default contest expects no config or empty dict as config"
+msgstr ""
+"El concurso predeterminado espera que no haya configuración o que sea "
+"un diccionario vacío."
+
+#: judge/contest_format/ecoo.py:34
+msgid "ECOO-styled contest expects no config or dict as config"
+msgstr ""
+"Un concurso de estilo ECOO espera que no haya configuración o que sea "
+"un diccionario."
+
+#: judge/contest_format/icpc.py:32
+msgid "ICPC-styled contest expects no config or dict as config"
+msgstr ""
+"Un concurso de estilo ICPC espera que no haya configuración o que sea "
+"un diccionario."
+
+#: judge/contest_format/legacy_ioi.py:30
+msgid "IOI-styled contest expects no config or dict as config"
+msgstr ""
+"Un concurso de estilo IOI espera que no haya configuración o que sea "
+"un diccionario."
+
+#: judge/models/contest.py:118
+msgid "performance ceiling override"
+msgstr "reemplazo del límite de rendimiento"
+
+#: judge/models/contest.py:119
+msgid ""
+"Overrides the performance_ceiling parameter used in computing ratings. Do "
+"not modify unless you know what you're doing!"
+msgstr ""
+"Reemplaza el parámetro performance_ceiling utilizado para calcular "
+"las puntuaciones. ¡No lo modifique a menos que sepa lo que hace!"
+
+#: judge/models/contest.py:124
+msgid "Rate users even if they make no submissions."
+msgstr "Calificar a los usuarios aunque no realicen ningún envío."
+
+#: judge/models/contest.py:208
+msgid "What is this? A contest that ended before it starts?"
+msgstr "¿Qué es esto? ¿Un concurso que termina antes de empezar?"
+
+#: judge/models/contest.py:216
+#, python-format
+msgid "Contest problem label script: %s"
+msgstr "Script de etiquetas de problemas del concurso: %s"
+
+#: judge/models/contest.py:219
+msgid "Contest problem label script: script should return a string."
+msgstr ""
+"Script de etiquetas de problemas del concurso: el script debe "
+"devolver una cadena."
+
+#: judge/models/contest.py:507
+msgid "Override performance ceiling of contest"
+msgstr "Reemplazar el límite de rendimiento del concurso"
+
+#: judge/models/interface.py:32
+#, python-format
+msgid "Invalid regex: %s"
+msgstr "Expresión regular no válida: %s"
+
+#: judge/models/problem.py:505
+msgid "Create private problems"
+msgstr "Crear problemas privados"
+
+#: judge/models/profile.py:379
+msgid "Organization requires a class to be specified"
+msgstr "La organización requiere que se especifique una clase"
+
+#: judge/models/profile.py:381
+msgid "Class must be part of the organization"
+msgstr "La clase debe pertenecer a la organización"
+
+#: judge/models/submission.py:91
+msgid "is archived"
+msgstr "está archivado"
+
+#: judge/models/submission.py:237
+msgid "Archive any submission"
+msgstr "Archivar cualquier envío"
+
+#: judge/social_auth.py:63
+msgid "Sorry, the username is taken."
+msgstr "Lo sentimos, el nombre de usuario ya está en uso."
+
+#: judge/views/two_factor.py:75
+msgid "No TOTP key generated on server side?"
+msgstr "¿No se generó ninguna clave TOTP en el servidor?"

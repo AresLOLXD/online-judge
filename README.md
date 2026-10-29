@@ -68,6 +68,8 @@ uv run python manage.py test judge
 
 If `.venv` already exists on another Python version, `uv sync` removes it and recreates it on Python 3.13 without asking.
 The environment lives inside the checkout, so run `python manage.py compilemessages --ignore=.venv` to keep the third-party `.po` files in `.venv` out of the build.
+`./check_translations.sh [ref]` reports the interface strings that have no Spanish translation, in a throwaway worktree of `ref` (default `HEAD`), without touching your checkout.
+Run it before deploying and after merging upstream.
 
 ## Screenshots
 

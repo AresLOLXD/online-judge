@@ -3,8 +3,13 @@
 # Usage: ./check_translations.sh [ref]
 # Exit status: 0 all translated, 1 something is missing, 2 the check could not run.
 set -u
+set -o pipefail
 
-ref=${1:-HEAD}
+if [ $# -gt 1 ] || [ "${1-HEAD}" = "" ]; then
+  echo "Usage: $0 [ref]" >&2
+  exit 2
+fi
+ref=${1-HEAD}
 
 for tool in git xgettext msgattrib; do
   if ! [ -x "$(command -v "$tool")" ]; then
@@ -17,7 +22,7 @@ cd "$(dirname "$0")" || exit 2
 root=$(git rev-parse --show-toplevel) || exit 2
 main_checkout=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
 
-if ! git rev-parse --verify --quiet "$ref^{commit}" >/dev/null; then
+if ! commit=$(git rev-parse --verify --quiet "$ref^{commit}"); then
   echo "Error: '$ref' is not a git ref or commit." >&2
   exit 2
 fi
@@ -27,18 +32,17 @@ worktree=$tmp/worktree
 # shellcheck disable=SC2329  # invoked through the EXIT trap
 cleanup() {
   cd / || true
-  git -C "$root" worktree remove --force "$worktree" >/dev/null 2>&1
-  git -C "$root" worktree prune
+  # twice --force also removes a worktree whose creation was interrupted
+  git -C "$root" worktree remove --force --force "$worktree" >/dev/null 2>&1
   rm -rf "$tmp"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-git -C "$root" worktree add --quiet --detach "$worktree" "$ref" || exit 2
-if [ -f "$root/dmoj/local_settings.py" ]; then
-  cp "$root/dmoj/local_settings.py" "$worktree/dmoj/local_settings.py"
-fi
+git -C "$root" worktree add --quiet --detach "$worktree" "$commit" || exit 2
+# Not the real local_settings.py: it would connect the run to the configured database and copy secrets into /tmp.
+printf "STATIC_ROOT = '%s/static'\n" "$tmp" >"$worktree/dmoj/local_settings.py"
 
 # Use the project's environment without letting uv create a .venv inside the throwaway worktree.
 python_cmd=(python)
@@ -87,8 +91,8 @@ for domain in django djangojs; do
     echo "Error: makemessages did not produce $domain.po." >&2
     exit 2
   fi
-  untranslated=$(msgattrib --untranslated --no-obsolete --no-wrap "$po" | list_entries)
-  fuzzy=$(msgattrib --only-fuzzy --no-obsolete --no-wrap "$po" | list_entries)
+  untranslated=$(msgattrib --untranslated --no-obsolete --no-wrap "$po" | list_entries) || exit 2
+  fuzzy=$(msgattrib --only-fuzzy --no-obsolete --no-wrap "$po" | list_entries) || exit 2
   untranslated_count=$(printf '%s' "$untranslated" | grep -c '^')
   fuzzy_count=$(printf '%s' "$fuzzy" | grep -c '^')
   echo "$domain: untranslated=$untranslated_count fuzzy=$fuzzy_count"

@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import urlparse
 
 import mistune
 from bleach.css_sanitizer import CSSSanitizer
@@ -12,6 +13,7 @@ from mistune.plugins.table import table
 from mistune.plugins.url import url
 from mistune.util import safe_entity
 
+from judge.highlight_code import highlight_code
 from judge.jinja2.markdown.lazy_load import lazy_load as lazy_load_processor
 from judge.utils.camo import client as camo_client
 from .bleach_whitelist import all_styles, mathml_attrs, mathml_tags
@@ -19,19 +21,54 @@ from .. import registry
 
 logger = logging.getLogger('judge.html')
 
+NOFOLLOW_WHITELIST = settings.NOFOLLOW_EXCLUDED
+
 
 class AwesomeRenderer(mistune.HTMLRenderer):
-    def __init__(self, escape=True):
+    def __init__(self, escape=True, nofollow=True):
         super().__init__(escape=escape)
+        self.nofollow = nofollow
 
     def text(self, text):
         # Decode then re-escape, so that an entity typed by the author is not escaped twice
         # (mistune only does this when escape is off); the result is escaped either way.
         return safe_entity(text)
 
+    def _needs_nofollow(self, href):
+        try:
+            host = urlparse(href).netloc
+        except ValueError:
+            return True
+        return bool(host) and host not in NOFOLLOW_WHITELIST
 
-def _create_markdown(escape):
-    return mistune.Markdown(renderer=AwesomeRenderer(escape=escape), plugins=[strikethrough, table, url])
+    def link(self, text, url, title=None):
+        attrs = {'href': self.sanitize_url(url)}
+        if title:
+            attrs['title'] = title
+        if self.nofollow and self._needs_nofollow(attrs['href']):
+            attrs['rel'] = 'nofollow'
+        return '<a' + self.render_attrs(attrs) + '>' + text + '</a>'
+
+    def heading(self, text, level, **attrs):
+        return super().heading(text, min(level + 2, 6), **attrs)
+
+    def block_code(self, code, info=None):
+        lang = safe_entity(info.strip()).split(None, 1)[0] if info and info.strip() else None
+        if lang:
+            return highlight_code(code, lang)
+        return super().block_code(code, info)
+
+
+def render_table(renderer, text):
+    return '<div class="h-scrollable-table">\n<table class="table">\n' + text + '</table>\n</div>\n'
+
+
+def _create_markdown(escape, nofollow=True):
+    markdown = mistune.Markdown(renderer=AwesomeRenderer(escape=escape, nofollow=nofollow),
+                                plugins=[strikethrough, table, url])
+    # The table plugin registers its own hook when applied, so ours goes after it.
+    markdown.renderer.register('table', render_table)
+    return markdown
 
 
 cleaner_cache = {}
@@ -91,6 +128,7 @@ def fragment_tree_to_str(tree):
 def markdown(value, style, math_engine=None, lazy_load=False, strip_paragraphs=False):
     styles = settings.MARKDOWN_STYLES.get(style, settings.MARKDOWN_DEFAULT_STYLE)
     escape = styles.get('safe_mode', True)
+    nofollow = styles.get('nofollow', True)
     bleach_params = styles.get('bleach', {})
 
     post_processors = []
@@ -99,7 +137,7 @@ def markdown(value, style, math_engine=None, lazy_load=False, strip_paragraphs=F
     if lazy_load:
         post_processors.append(lazy_load_processor)
 
-    result = _create_markdown(escape)(value)
+    result = _create_markdown(escape, nofollow)(value)
 
     if post_processors or strip_paragraphs:
         tree = fragments_to_tree(result)

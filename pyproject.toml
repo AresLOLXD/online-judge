@@ -15,7 +15,7 @@ dependencies = [
     "lxml",
     "lxml_html_clean",
     "Pygments",
-    "mistune<2",
+    "mistune>=3.4,<4",
     "social-auth-core>=6",
     "social-auth-app-django>=7",
     "pytz",

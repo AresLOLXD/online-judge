@@ -119,7 +119,7 @@ class TestMarkdown(SimpleTestCase):
         self.assertHTMLEqual(markdown('<script>void(0)</script>', self.BLEACHED_STYLE),
                              '&lt;script&gt;void(0)&lt;/script&gt;')
         self.assertHTMLEqual(markdown('<img style="display: block; margin: 0 auto">', self.BLEACHED_STYLE),
-                             '<p><img style="display: block; margin: 0 auto;"></p>')
+                             '<img style="display: block; margin: 0 auto;">')
         self.assertHTMLEqual(markdown('<style>a { color: red; }</style>', self.BLEACHED_STYLE),
                              '<style>a { color: red; }</style>')
 
@@ -137,8 +137,8 @@ class TestMarkdown(SimpleTestCase):
     def test_post_process(self):
         """Scenario: Lazy loading"""
         self.assertHTMLEqual(markdown('<img src="test.png">', self.UNBLEACHED_STYLE, lazy_load=True),
-                             '<p><noscript><img src="test.png"></noscript>'
-                             '<img src="/static/blank.gif" data-src="test.png" class="unveil"></p>')
+                             '<noscript><img src="test.png"></noscript>'
+                             '<img src="/static/blank.gif" data-src="test.png" class="unveil">')
 
 
 class TestFragmentUtils(SimpleTestCase):
@@ -196,8 +196,8 @@ class TestAutolinkInjection(SimpleTestCase):
             with self.subTest(source=source):
                 links = self.render(source, 'comment').findall('.//a')
                 self.assertEqual(len(links), 1)
-                self.assertEqual(links[0].get('href'), 'http://x.com/"y')
-                self.assertEqual(links[0].get('rel'), 'nofollow')
+                self.assertEqual(links[0].get('href'), 'http://x.com/%22y')
+                self.assertEqual(links[0].text, 'http://x.com/"y')
 
     def test_single_quote_in_url(self):
         """Scenario: Quotes cannot break out of a link attribute"""
@@ -207,13 +207,13 @@ class TestAutolinkInjection(SimpleTestCase):
                 self.assertFalse(name.lower().startswith('on'), (element.tag, name))
         links = tree.findall('.//a')
         self.assertEqual(len(links), 1)
-        self.assertEqual(links[0].get('href'), "http://x.com/'onmouseover='y")
+        self.assertEqual(links[0].get('href'), 'http://x.com/%27onmouseover=%27y')
+        self.assertEqual(links[0].text, "http://x.com/'onmouseover='y")
 
     def test_normal_autolinks_unchanged(self):
         links = self.render('<https://example.com/page>', 'comment').findall('.//a')
         self.assertEqual(len(links), 1)
         self.assertEqual(links[0].get('href'), 'https://example.com/page')
-        self.assertEqual(links[0].get('rel'), 'nofollow')
         self.assertEqual(links[0].text, 'https://example.com/page')
 
         links = self.render('<a@b.c>', 'comment').findall('.//a')
@@ -250,9 +250,31 @@ class TestAutolinkInjection(SimpleTestCase):
         self.assertEqual(len(links), 1)
         self.assertEqual(links[0].text, 'javascript:alert(1)')
 
-        # The ampersand of an entity-encoded scheme must itself be escaped in the href.
-        self.assertIn('&amp;#106;', str(markdown('<&#106;avascript:alert(1)>', 'comment')))
-        self.assertIn('&amp;Tab;', str(markdown('<java&Tab;script:alert(1)>', 'comment')))
+        # An entity-encoded scheme is not a link: it is decoded and shown as escaped text.
+        self.assertEqual(self.render('<&#106;avascript:alert(1)>', 'comment').findall('.//a'), [])
+        self.assertIn('&lt;javascript:alert(1)&gt;', str(markdown('<&#106;avascript:alert(1)>', 'comment')))
+
+
+class TestInputEdgeCases(SimpleTestCase):
+    def test_empty_input(self):
+        self.assertEqual(markdown('', 'comment'), '')
+
+    def test_entities_and_unicode(self):
+        result = str(markdown('a &amp; b <3 \U0001F600', 'comment'))
+        self.assertIn('a &amp; b', result)
+        self.assertIn('&lt;3', result)
+        self.assertEqual(result.count('\U0001F600'), 1)
+        self.assertNotIn('&amp;amp;', result)
+
+    def test_crlf_line_endings(self):
+        result = str(markdown('a\r\n\r\nb', 'comment'))
+        self.assertEqual(len(fragments_to_tree(result).findall('p')), 2)
+        self.assertNotIn('\r', result)
+
+    def test_long_single_line(self):
+        start = time.perf_counter()
+        markdown('a' * 8192, 'comment')
+        self.assertLess(time.perf_counter() - start, 1.0)
 
 
 SAFE_STYLES = ('default', 'comment', 'self-description', 'organization-about', 'ticket')

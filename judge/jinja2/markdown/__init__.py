@@ -59,13 +59,21 @@ class AwesomeRenderer(mistune.HTMLRenderer):
         return super().block_code(code, info)
 
 
+class AwesomeBlockParser(mistune.BlockParser):
+    SPECIFICATION = {
+        **mistune.BlockParser.SPECIFICATION,
+        # mistune 3 requires whitespace after the hashes; mistune 0.8 did not, and existing content relies on it.
+        'atx_heading': r'^ {0,3}(?P<atx_1>#{1,6})(?!#+)(?P<atx_2>[ \t]*|[ \t]*[^#\s].*?)$',
+    }
+
+
 def render_table(renderer, text):
     return '<div class="h-scrollable-table">\n<table class="table">\n' + text + '</table>\n</div>\n'
 
 
 def _create_markdown(escape, nofollow=True):
     markdown = mistune.Markdown(renderer=AwesomeRenderer(escape=escape, nofollow=nofollow),
-                                plugins=[strikethrough, table, url])
+                                block=AwesomeBlockParser(), plugins=[strikethrough, table, url])
     # The table plugin registers its own hook when applied, so ours goes after it.
     markdown.renderer.register('table', render_table)
     return markdown

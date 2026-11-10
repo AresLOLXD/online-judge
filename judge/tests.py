@@ -9,7 +9,7 @@ from django.test import RequestFactory, SimpleTestCase, TestCase, override_setti
 from django.urls import reverse
 from social_core.exceptions import AuthInputError
 
-from judge.models import Language
+from judge.models import Judge, Language, RuntimeVersion
 from judge.social_auth import SocialAuthExceptionMiddleware, verify_email
 from judge.timezone import TimezoneMiddleware
 
@@ -119,3 +119,13 @@ class TimezoneMiddlewareTestCase(SimpleTestCase):
                 request = RequestFactory().get('/')
                 request.profile = SimpleNamespace(timezone=tzname) if tzname else None
                 self.assertEqual(middleware(request).astimezone(datetime.timezone.utc), expected)
+
+
+class VersionMatrixTestCase(TestCase):
+    def test_empty_runtime_version_does_not_crash(self):
+        judge = Judge.objects.create(name='judge1', online=True, auth_key='x')
+        language = Language.objects.create(key='PYX', name='Python X', short_name='PYX', common_name='Python')
+        judge.runtimes.add(language)
+        RuntimeVersion.objects.create(language=language, judge=judge, name='cpython', version='')
+        response = self.client.get(reverse('version_matrix'))
+        self.assertEqual(response.status_code, 200)

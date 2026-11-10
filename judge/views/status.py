@@ -36,6 +36,14 @@ def status_table(request):
     })
 
 
+def parse_version(value):
+    # Empty or free-form strings are valid data: the judge sends '' when it cannot determine a runtime version.
+    try:
+        return version.parse(value)
+    except version.InvalidVersion:
+        return version.Version('0')
+
+
 class LatestList(list):
     __slots__ = ('versions', 'is_latest')
 
@@ -95,7 +103,7 @@ def version_matrix(request):
 
     for data in matrix.values():
         for language, versions in data.items():
-            versions.versions = [version.parse(runtime.version) for runtime in versions]
+            versions.versions = [parse_version(runtime.version) for runtime in versions]
             if versions.versions > latest[language]:
                 latest[language] = versions.versions
 
@@ -103,7 +111,7 @@ def version_matrix(request):
         for language, versions in data.items():
             versions.is_latest = versions.versions == latest[language]
 
-    languages = sorted(languages, key=lambda lang: version.parse(lang.name))
+    languages = sorted(languages, key=lambda lang: (parse_version(lang.name), lang.name))
     return render(request, 'status/versions.html', {
         'title': _('Version'),
         'judges': sorted(matrix.keys()),

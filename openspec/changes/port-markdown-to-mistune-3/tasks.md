@@ -29,7 +29,7 @@ Covers: markdown-rendering / Bare URLs and strikethrough are supported / Bare UR
 
 - [x] 2.1 Write the tests first: `TestLinks` (nofollow by host with a patched `NOFOLLOW_WHITELIST`, a style without nofollow through `override_settings(MARKDOWN_STYLES=...)`, the scheme allowlist), `TestHeadings`, `TestHeadingWithoutSpace`, `TestTables`, `TestCode`; run them in the baseline worktree of 1.1 and record which pass (kept behavior: nofollow, tables, code, `#Title`) and which fail (new: `<h6>` cap, scheme allowlist, `#Title` untouched inside HTML blocks).
 - [x] 2.2 Implement the `nofollow` logic in the renderer's link hook (host outside `NOFOLLOW_EXCLUDED`, none for relative and `mailto:`), the heading shift `min(level + 2, 6)`, the scrollable table wrapper, and the code block hook (highlight with a language, escaped `<pre><code>` without); verify `TestLinks`, `TestHeadings`, `TestTables` and `TestCode` pass.
-- [ ] 2.3 Implement the `#Title` rule as a `BlockParser` subclass that relaxes `atx_heading` (design decision 9) and use it from the filter; verify `TestHeadingWithoutSpace` passes, including `#include <stdio.h>` inside a fence and inside a `<pre>` block, and `#a { color: red }` inside a `<style>` block.
+- [x] 2.3 Implement the `#Title` rule as a `BlockParser` subclass that relaxes `atx_heading` (design decision 9) and use it from the filter; verify `TestHeadingWithoutSpace` passes, including `#include <stdio.h>` inside a fence and inside a `<pre>` block, and `#a { color: red }` inside a `<style>` block.
 
 Covers: markdown-rendering / External links are not followed by search engines / Nofollow by host
 Covers: markdown-rendering / External links are not followed by search engines / Style without nofollow

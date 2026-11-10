@@ -4,7 +4,7 @@ from html import unescape
 from html.entities import name2codepoint
 from unittest import mock
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 from lxml import html
 
 from . import fragment_tree_to_str, fragments_to_tree, get_cleaner, markdown
@@ -720,3 +720,162 @@ class TestInlineExtras(SimpleTestCase):
         self.assertEqual(links[0].get('href'), 'https://example.com/a')
         self.assertEqual(links[0].text, 'https://example.com/a')
         self.assertEqual([deleted.text for deleted in tree.findall('.//del')], ['gone'])
+
+
+class TestLinks(SimpleTestCase):
+    def test_nofollow_by_host(self):
+        """Scenario: Nofollow by host"""
+        sources = (
+            '[a](https://example.com/)',
+            '[b](https://excluded.example/)',
+            '[c](/problem/a)',
+            'https://example.org/x',
+            '<a@b.c>',
+            '<https://example.net/auto>',
+        )
+        with mock.patch('judge.jinja2.markdown.NOFOLLOW_WHITELIST', {'excluded.example'}):
+            links = render_tree('\n\n'.join(sources), 'comment').findall('.//a')
+        self.assertEqual([link.get('rel') for link in links], ['nofollow', None, None, 'nofollow', None, 'nofollow'])
+
+    @override_settings(MARKDOWN_STYLES={'plain': {'safe_mode': True, 'nofollow': False}})
+    def test_style_without_nofollow(self):
+        """Scenario: Style without nofollow"""
+        links = render_tree('[a](https://example.com/)', 'plain').findall('.//a')
+        self.assertEqual(len(links), 1)
+        self.assertNotIn('rel', links[0].attrib)
+
+    def test_allowed_and_replaced_schemes(self):
+        """Scenario: Allowed and replaced schemes"""
+        kept = render_tree(
+            '[a](https://example.com/)\n\n[b](mailto:a@b.c)\n\n[c](tel:+123)\n\n[d](ftp://example.com/)\n\n'
+            '[e](/relative)\n\n![i](data:image/png;base64,AA)',
+            'comment',
+        )
+        self.assertEqual([link.get('href') for link in kept.iter('a')],
+                         ['https://example.com/', 'mailto:a@b.c', 'tel:+123', 'ftp://example.com/', '/relative'])
+        self.assertEqual([image.get('src') for image in kept.iter('img')], ['data:image/png;base64,AA'])
+
+        replaced = render_tree(
+            '[a](steam://run/1)\n\n[b](sms:+1)\n\n[c](file:///etc/passwd)\n\n![i](data:image/svg+xml,AA)',
+            'comment',
+        )
+        self.assertEqual([link.get('href') for link in replaced.iter('a')], ['#harmful-link'] * 3)
+        self.assertEqual([image.get('src') for image in replaced.iter('img')], ['#harmful-link'])
+
+    def test_unparsable_host_does_not_raise(self):
+        """Not tied to a Scenario: a URL whose host cannot be parsed is rendered without raising."""
+        result = markdown('[x](http://[::1)', 'comment')
+        self.assertIsInstance(result, str)
+        self.assertEqual(executable_markup(parse_fragment(str(result))), [])
+
+    def test_protocol_relative_link_is_nofollow(self):
+        """Not tied to a Scenario: a protocol-relative link has a host, so it is nofollow."""
+        links = render_tree('[x](//example.com/p)', 'comment').findall('.//a')
+        self.assertEqual([link.get('rel') for link in links], ['nofollow'])
+
+    def test_link_text_keeps_markup(self):
+        """Not tied to a Scenario: markup inside the link text is rendered."""
+        self.assertIsNotNone(render_tree('[**b**](https://example.com/)', 'comment').find('.//a/strong'))
+
+    def test_entity_scheme_autolink_is_text(self):
+        """Not tied to a Scenario: an autolink whose scheme is spelled with an entity is not a link."""
+        self.assertEqual(render_tree('<java&Tab;script:alert(1)>', 'comment').findall('.//a'), [])
+
+
+HEADING_TAGS = ('h1', 'h2', 'h3', 'h4', 'h5', 'h6')
+
+
+class TestHeadings(SimpleTestCase):
+    def test_heading_levels(self):
+        """Scenario: Heading levels"""
+        tree = render_tree('# a\n\n### b\n\n###### c', 'comment')
+        self.assertEqual([(heading.tag, heading.text) for heading in tree.iter(*HEADING_TAGS)],
+                         [('h3', 'a'), ('h5', 'b'), ('h6', 'c')])
+
+    def test_trailing_hashes_are_not_text(self):
+        """Not tied to a Scenario: the closing hashes of a heading are not part of its text."""
+        headings = list(render_tree('## Sub ##', 'comment').iter(*HEADING_TAGS))
+        self.assertEqual([(heading.tag, heading.text) for heading in headings], [('h4', 'Sub')])
+
+
+class TestHeadingWithoutSpace(SimpleTestCase):
+    def test_heading_without_a_space(self):
+        """Scenario: Heading without a space"""
+        tree = render_tree('#Title\n\n##Sub', 'comment')
+        self.assertEqual([(heading.tag, heading.text) for heading in tree.iter(*HEADING_TAGS)],
+                         [('h3', 'Title'), ('h4', 'Sub')])
+        self.assertNotIn('#', tree.text_content())
+
+    def test_fenced_code_is_untouched(self):
+        """Scenario: Fenced code is untouched"""
+        tree = render_tree('```\n#include <stdio.h>\n```', 'comment')
+        self.assertIn('#include <stdio.h>', tree.find('.//pre').text_content())
+        self.assertEqual(list(tree.iter(*HEADING_TAGS)), [])
+
+    def test_raw_html_blocks_are_untouched(self):
+        """Scenario: Raw HTML blocks are untouched"""
+        source = '<style>\n#a { color: red }\n</style>\n\n<pre>\n#include <x>\n\n#b\n</pre>'
+        raw = str(markdown(source, 'problem-full'))
+        self.assertIn('<style>\n#a { color: red }\n</style>', raw)
+        self.assertIn('<pre>\n#include <x>\n\n#b\n</pre>', raw)
+        self.assertEqual(list(parse_fragment(raw).iter(*HEADING_TAGS)), [])
+
+    def test_seven_hashes_is_a_paragraph(self):
+        """Not tied to a Scenario: seven hashes are too many for a heading."""
+        tree = render_tree('#######x', 'comment')
+        self.assertEqual(list(tree.iter(*HEADING_TAGS)), [])
+        self.assertEqual([paragraph.text for paragraph in tree.findall('p')], ['#######x'])
+
+    def test_lone_hash_does_not_raise(self):
+        """Not tied to a Scenario: a lone hash is rendered without raising."""
+        self.assertIsInstance(markdown('#', 'comment'), str)
+
+
+class TestTables(SimpleTestCase):
+    def test_table_wrapper(self):
+        """Scenario: Table wrapper"""
+        tree = render_tree('| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |', 'comment')
+        wrappers = tree.findall('.//div[@class="h-scrollable-table"]')
+        self.assertEqual(len(wrappers), 1)
+        tables = wrappers[0].findall('table[@class="table"]')
+        self.assertEqual(len(tables), 1)
+        self.assertEqual(len(tree.findall('.//table')), 1)
+        self.assertEqual(len(tables[0].findall('thead/tr')), 1)
+        self.assertEqual(len(tables[0].findall('tbody/tr')), 2)
+
+    def test_table_cells_keep_markup_and_escaped_pipe(self):
+        """Not tied to a Scenario: cells render inline markup and honour an escaped pipe."""
+        cells = render_tree('| x | y |\n|---|---|\n| **b** | a \\| b |', 'comment').findall('.//tbody/tr/td')
+        self.assertEqual(len(cells), 2)
+        self.assertIsNotNone(cells[0].find('strong'))
+        self.assertEqual(cells[1].text, 'a | b')
+
+
+class TestCode(SimpleTestCase):
+    def test_code_blocks(self):
+        """Scenario: Code blocks"""
+        tree = render_tree('```python\nx = 1\n```', 'comment')
+        self.assertEqual(len(tree.findall('.//*[@class="codehilite"]')), 1)
+
+        source = '```\n<b>&</b>\n```'
+        code = render_tree(source, 'comment').find('.//pre/code')
+        self.assertEqual(code.text.strip(), '<b>&</b>')
+        self.assertIn('<pre><code>&lt;b&gt;&amp;&lt;/b&gt;', str(markdown(source, 'comment')))
+
+    def test_unknown_language_falls_back(self):
+        """Not tied to a Scenario: an unknown or hostile language gives plain escaped preformatted text."""
+        for language in ('notalang', '<script>alert(1)</script>'):
+            with self.subTest(language=language):
+                tree = render_tree(f'```{language}\nx < y\n```', 'comment')
+                self.assertIn('x < y', tree.find('.//pre/code').text)
+                self.assertEqual(tree.findall('.//script'), [])
+                self.assertEqual(executable_markup(tree), [])
+
+    def test_info_string_uses_the_first_word(self):
+        """Not tied to a Scenario: only the first word of the info string names the language."""
+        tree = render_tree('```python title="x"\nx = 1\n```', 'comment')
+        self.assertEqual(len(tree.findall('.//*[@class="codehilite"]')), 1)
+
+    def test_code_span_keeps_a_literal_entity(self):
+        """Not tied to a Scenario: an entity inside a code span is shown literally, not decoded."""
+        self.assertIn('<code>a &amp;amp; b</code>', str(markdown('`a &amp; b`', 'comment')))

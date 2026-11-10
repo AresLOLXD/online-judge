@@ -1,5 +1,7 @@
 import re
 import time
+from html import unescape
+from html.entities import name2codepoint
 from unittest import mock
 
 from django.test import SimpleTestCase
@@ -256,24 +258,46 @@ class TestAutolinkInjection(SimpleTestCase):
 SAFE_STYLES = ('default', 'comment', 'self-description', 'organization-about', 'ticket')
 
 
+def parse_fragment(raw):
+    """Parse as a browser does: libxml2 knows only the HTML 4 entity names, so decode the HTML5-only ones first."""
+    def decode(match):
+        decoded = unescape(match.group(0))
+        # Entities that stand for markup characters (&LT;, &QUOT;...) are text in a browser; leave them to lxml.
+        return match.group(0) if match.group(1) in name2codepoint or decoded in '<>&"\'' else decoded
+
+    return html.fragment_fromstring(re.sub(r'&([A-Za-z][A-Za-z0-9]*);', decode, raw), create_parent='div')
+
+
 def render_tree(source, style, **kwargs):
-    return html.fragment_fromstring(str(markdown(source, style, **kwargs)), create_parent='div')
+    return parse_fragment(str(markdown(source, style, **kwargs)))
+
+
+EXECUTABLE_TAGS = frozenset(
+    ('script', 'iframe', 'object', 'form', 'embed', 'base', 'meta', 'link', 'style', 'applet', 'frame'),
+)
+URL_ATTRIBUTES = frozenset(('href', 'src', 'action', 'formaction', 'xlink:href', 'data', 'poster', 'ping'))
 
 
 def executable_markup(tree):
-    """Return what a browser could execute in the tree; independent of the renderer, so an empty list means safe."""
+    """
+    Return what a browser could execute or load in the tree; independent of the renderer, so [] means safe.
+
+    A denylist for the safe-mode styles only (raw HTML is escaped there): staff styles legitimately keep
+    `style` elements and the like, so never use this on them.
+    """
     found = []
     for element in tree.iter():
         if not isinstance(element.tag, str):  # comments and processing instructions
             continue
-        if element.tag.lower() in ('script', 'iframe', 'object'):
+        if element.tag.lower() in EXECUTABLE_TAGS:
             found.append(f'<{element.tag}>')
         for name, value in element.attrib.items():
-            if name.lower().startswith('on'):
+            name = name.lower()
+            # The attribute value is decoded once, as a browser does it.
+            scheme_text = re.sub(r'[\x00-\x20]', '', value).lower()
+            if name.startswith('on'):
                 found.append(f'{element.tag} {name}={value!r}')
-            # lxml has decoded the entities once, as a browser does; only whitespace and controls are left to drop.
-            elif name.lower() in ('href', 'src') and \
-                    re.sub(r'[\x00-\x20]', '', value).lower().startswith(('javascript:', 'vbscript:')):
+            elif name in URL_ATTRIBUTES and scheme_text.startswith(('javascript:', 'vbscript:')):
                 found.append(f'{element.tag} {name}={value!r}')
     return found
 
@@ -397,7 +421,178 @@ PAYLOADS = (
     '`<b onclick=x>`',
     '`~<img onerror=x>~`',
     '```\n<script>alert(1)</script>\n```',
+    # Review additions: Scheme tricks (links, images, references, autolinks, bare).
+    '[x](jAvAsCrIpT:alert(1))',
+    '[x](&#x6a;&#x61;&#x76;&#x61;&#x73;&#x63;&#x72;&#x69;&#x70;&#x74;:alert(1))',
+    '[x](&#106&#97&#118&#97&#115&#99&#114&#105&#112&#116&#58;alert(1))',
+    '[x](java&Tab;script:alert(1))',
+    '[x](java&NewLine;script:alert(1))',
+    '[x](&Tab;javascript:alert(1))',
+    '[x](&#x20;javascript:alert(1))',
+    '[x](\x1fjavascript:alert(1))',
+    '[x](\x0bjavascript:alert(1))',
+    '[x](\x0cjavascript:alert(1))',
+    '[x](java\rscript:alert(1))',
+    '[x](java\x00script:alert(1))',
+    '[x](javascript://%0aalert(1))',
+    '[x](javascript://example.com/%0Aalert(1))',
+    '[x](JaVa%0aScRiPt:alert(1))',
+    '[x](vbscript&colon;msgbox(1))',
+    '[x](data:text/html;charset=utf-8,<script>alert(1)</script>)',
+    '[x](DATA:text/html,<script>alert(1)</script>)',
+    '[x](data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSk+)',
+    '![x](data:text/html,<script>alert(1)</script>)',
+    '![x]( \tjavascript:alert(1))',
+    '[x](file:///etc/passwd)',
+    '[x](steam://run/1)',
+    '[x]: javascript:alert(1)\n\n[x]',
+    '[x][]\n\n[x]: <javascript:alert(1)>',
+    '[X]: JAVASCRIPT:alert(1)\n\n[x]',
+    '![x][r]\n\n[r]: javascript:alert(1)',
+    '<jAvAsCrIpT:alert(1)>',
+    '<javascript&colon;alert(1)>',
+    '<java\nscript:alert(1)>',
+    '<\x01javascript:alert(1)>',
+    '<data:text/html,<script>alert(1)</script>>',
+    'javascript:alert(1)',
+    'www.example.com/"onmouseover="alert(1)',
+    '<"onmouseover="alert(1)"@b.c>',
+    '<mailto:a@b.c?subject="onmouseover="alert(1)>',
+    # Review additions: Attribute breaking (targets, titles, alt text, references, fence info strings).
+    '[x](http://a.b/&quot;onmouseover=&quot;alert(1))',
+    '[x](http://a.b/&#34;onmouseover=&#34;alert(1))',
+    '[x](http://a.b/?a=1&onmouseover=alert(1))',
+    "[x](http://a.b/'onmouseover='alert(1))",
+    '[x](http://a.b/`onmouseover=`alert(1))',
+    '[x](<http://a.b/ onmouseover=alert(1)>)',
+    '[x](http://a.b "&quot; onmouseover=&quot;alert(1)")',
+    '[x](http://a.b "&#34; onmouseover=&#34;alert(1)")',
+    '![<img src=x onerror=alert(1)>](http://a.b/i.png)',
+    '![x&quot; onerror=&quot;alert(1)](http://a.b/i.png)',
+    '![x](http://a.b/i.png "t\\" onerror=\\"alert(1)")',
+    '![x](<http://a.b/i.png onerror=alert(1)>)',
+    '[<img src=x onerror=alert(1)>][r]\n\n[r]: http://a.b',
+    '[x"onmouseover="alert(1)][r]\n\n[r]: http://a.b',
+    "[r]: http://a.b 'x\" onmouseover=\"alert(1)'\n\n[r]",
+    '```"onmouseover="alert(1)\nx\n```',
+    '```<img src=x onerror=alert(1)>\nx\n```',
+    '```javascript"><script>alert(1)</script>\nx\n```',
+    '~~~"onmouseover="alert(1)\nx\n~~~',
+    # Review additions: Raw HTML.
+    '<img src=x onerror=alert(1)',
+    '<a href="javascript:alert(1)"',
+    '<svg/onload=alert(1)>',
+    '<details open ontoggle=alert(1)>',
+    '<input autofocus onfocus=alert(1)>',
+    '<video><source onerror=alert(1)></video>',
+    '<embed src="javascript:alert(1)">',
+    '<base href="javascript:alert(1)//">',
+    '<meta http-equiv="refresh" content="0;url=javascript:alert(1)">',
+    '<link rel="stylesheet" href="javascript:alert(1)">',
+    '<form><button formaction="javascript:alert(1)">x</button></form>',
+    '<svg><a xlink:href="javascript:alert(1)"><text>x</text></a></svg>',
+    '<svg><animate attributeName="href" values="javascript:alert(1)"/><a><text>x</text></a></svg>',
+    '<marquee onstart=alert(1)>x</marquee>',
+    '<style>*{background:url(javascript:alert(1))}</style>',
+    '<div style="width:expression(alert(1))">x</div>',
+    '<noscript><p title="</noscript><img src=x onerror=alert(1)>">',
+    '<textarea></textarea><img src=x onerror=alert(1)>',
+    '<xmp><script>alert(1)</script></xmp>',
+    '<!--[if IE]><script>alert(1)</script><![endif]-->',
+    '<!-- --!><img src=x onerror=alert(1)>',
+    '<?xml ?><script>alert(1)</script>',
+    '</p><script>alert(1)</script>',
+    '<scr\x00ipt>alert(1)</scr\x00ipt>',
+    '<img src=x onerror\x00=alert(1)>',
+    '<img\nsrc=x\nonerror=alert(1)>',
+    '<div>\n<script>alert(1)</script>\n</div>',
+    '<pre>\n<script>alert(1)</script>\n</pre>',
+    '<style>\n</style><script>alert(1)</script>',
+    '<img src=x onerror=&#97;lert(1)>',
+    '<latex><script>alert(1)</script></latex>',
+    '<latex inline="x" onerror="alert(1)">x</latex>',
+    # Review additions: Entity tricks.
+    '&#x3c;script&#x3e;alert(1)&#x3c;/script&#x3e;',
+    '&#0000060;script&#0000062;alert(1)',
+    '&#60script&#62alert(1)',
+    '&#x26;lt;script&#x26;gt;alert(1)',
+    '&amp;#60;script&amp;#62;alert(1)',
+    '<a href=&quot;javascript:alert(1)&quot;>x</a>',
+    '&bogus;<script>alert(1)</script>',
+    '&#xD800;<img src=x onerror=alert(1)>',
+    '&quot;onmouseover=&quot;alert(1)',
+    '[x](&#x6A&#x61vascript:alert(1))',
+    '&#106;&#97;vascript&colon;alert(1)',
+    # Review additions: Nested constructs.
+    '- [x](javascript:alert(1))',
+    '1. > ![x](javascript:alert(1))',
+    '> [![x"onerror="alert(1)](http://a.b/i.png)](http://a.b/"onmouseover="alert(1))',
+    '[[x](javascript:alert(1))](http://a.b)',
+    '![![x](javascript:alert(1))](http://a.b/i.png)',
+    '[![x](javascript:alert(1))](javascript:alert(1))',
+    '~~[x](javascript:alert(1))~~',
+    '# [x](javascript:alert(1))',
+    '#<img src=x onerror=alert(1)>',
+    '##"onmouseover="alert(1)',
+    '| [x](javascript:alert(1)) |\n|---|\n| y |',
+    '<http://a.b/[x](javascript:alert(1))>',
+    '[x](http://a.b/[y](javascript:alert(1)))',
+    '> - > - ![x](http://a.b/"onerror="alert(1))',
+    '- ```\n  <script>alert(1)</script>\n  ```',
+    '    <script>alert(1)</script>',
+    '<img src=x onerror=alert(1)>\n===',
+    '***<img src=x onerror=alert(1)>***',
+    'a  \n<script>alert(1)</script>',
+    '\\<script>alert(1)</script>',
+    '\\[x](javascript:alert(1))',
+    '[x](http://a.b/\\)onmouseover=alert(1))',
+    'https://a.b/~~"onmouseover="alert(1)~~',
+    'https://a.b/**"onmouseover="alert(1)**',
+    # Review additions: Math and code delimiters around markup.
+    '~<script>alert(1)</script>~',
+    '~a<img src=x onerror=alert(1)>~',
+    '$$<img src=x onerror=alert(1)>$$',
+    '$$\n<script>alert(1)</script>\n$$',
+    '$$a" onmouseover="alert(1)$$',
+    '\\(a" onmouseover="alert(1)\\)',
+    '\\(<script>alert(1)</script>',
+    '~<img src=x onerror=alert(1)>',
+    '$$<img src=x onerror=alert(1)>',
+    '\\[<img src=x onerror=alert(1)>',
+    '~[x](javascript:alert(1))~',
+    '$$[x](javascript:alert(1))$$',
+    '\\([x](javascript:alert(1))\\)',
+    '~a [b~](javascript:alert(1))',
+    '[x~](javascript:alert(1))~',
+    '`$$<script>$$`',
+    '``<img src=x onerror=alert(1)>``',
+    '~~~\n<script>alert(1)</script>\n~~~',
+    '`<img src=x onerror=alert(1)>',
 )
+
+
+class TestExecutableMarkupOracle(SimpleTestCase):
+    """Positive control of executable_markup; it maps to no Scenario by design (it tests the test helper)."""
+
+    def test_bad_fragments_are_flagged(self):
+        for fragment in (
+            '<script>x</script>',
+            '<img onerror=x>',
+            '<a href=" JaVa\tscript:x">x</a>',
+            '<a href="&#106;avascript:x">x</a>',
+            '<a href="javascript&colon;x">x</a>',
+            '<img src="vbscript:x">',
+            '<form action="javascript:x"></form>',
+            '<base href="x">',
+        ):
+            with self.subTest(fragment=fragment):
+                tree = parse_fragment(fragment)
+                self.assertNotEqual(executable_markup(tree), [])
+
+    def test_harmless_fragment_is_not_flagged(self):
+        for fragment in ('<a href="https://a.b">x</a>', '<a href="javascript&amp;colon;x">x</a>'):
+            with self.subTest(fragment=fragment):
+                self.assertEqual(executable_markup(parse_fragment(fragment)), [])
 
 
 class TestPathologicalInput(SimpleTestCase):
@@ -422,6 +617,10 @@ class TestMalformedInput(SimpleTestCase):
             '```python\nx',
             '<div',
             'a\x00b',
+            '> ' * 1000,
+            '- ' * 1000,
+            '*' * 5000 + 'a',
+            '![' * 2500,
         )
         for style in ('comment', 'problem'):
             for source in sources:

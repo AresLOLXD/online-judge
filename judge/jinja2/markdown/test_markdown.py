@@ -737,12 +737,19 @@ class TestLinks(SimpleTestCase):
             links = render_tree('\n\n'.join(sources), 'comment').findall('.//a')
         self.assertEqual([link.get('rel') for link in links], ['nofollow', None, None, 'nofollow', None, 'nofollow'])
 
-    @override_settings(MARKDOWN_STYLES={'plain': {'safe_mode': True, 'nofollow': False}})
+    @override_settings(MARKDOWN_STYLES={
+        'plain': {'safe_mode': True, 'nofollow': False},
+        'on': {'safe_mode': True, 'nofollow': True},
+    })
     def test_style_without_nofollow(self):
         """Scenario: Style without nofollow"""
-        links = render_tree('[a](https://example.com/)', 'plain').findall('.//a')
-        self.assertEqual(len(links), 1)
-        self.assertNotIn('rel', links[0].attrib)
+        # The style with nofollow on is the positive control: the anchor of 'plain' is bare only because of its flag.
+        for style, rel in (('on', 'nofollow'), ('plain', None)):
+            with self.subTest(style=style):
+                links = render_tree('[a](https://example.com/)', style).findall('.//a')
+                self.assertEqual(len(links), 1)
+                self.assertEqual(links[0].get('href'), 'https://example.com/')
+                self.assertEqual(links[0].get('rel'), rel)
 
     def test_allowed_and_replaced_schemes(self):
         """Scenario: Allowed and replaced schemes"""
@@ -764,9 +771,10 @@ class TestLinks(SimpleTestCase):
 
     def test_unparsable_host_does_not_raise(self):
         """Not tied to a Scenario: a URL whose host cannot be parsed is rendered without raising."""
-        result = markdown('[x](http://[::1)', 'comment')
-        self.assertIsInstance(result, str)
-        self.assertEqual(executable_markup(parse_fragment(str(result))), [])
+        # The link target is percent-encoded to http://%5B::1, which still has a host, so the link is nofollow.
+        tree = render_tree('[x](http://[::1)', 'comment')
+        self.assertEqual([link.get('rel') for link in tree.findall('.//a')], ['nofollow'])
+        self.assertEqual(executable_markup(tree), [])
 
     def test_protocol_relative_link_is_nofollow(self):
         """Not tied to a Scenario: a protocol-relative link has a host, so it is nofollow."""
@@ -854,8 +862,11 @@ class TestTables(SimpleTestCase):
 class TestCode(SimpleTestCase):
     def test_code_blocks(self):
         """Scenario: Code blocks"""
-        tree = render_tree('```python\nx = 1\n```', 'comment')
-        self.assertEqual(len(tree.findall('.//*[@class="codehilite"]')), 1)
+        tree = render_tree('```python\nprint(1)\n```', 'comment')
+        highlighted = tree.findall('.//*[@class="codehilite"]')
+        self.assertEqual(len(highlighted), 1)
+        self.assertIn('print', highlighted[0].text_content())
+        self.assertNotEqual(highlighted[0].findall('.//span'), [])
 
         source = '```\n<b>&</b>\n```'
         code = render_tree(source, 'comment').find('.//pre/code')
@@ -864,7 +875,7 @@ class TestCode(SimpleTestCase):
 
     def test_unknown_language_falls_back(self):
         """Not tied to a Scenario: an unknown or hostile language gives plain escaped preformatted text."""
-        for language in ('notalang', '<script>alert(1)</script>'):
+        for language in ('notalang', '<script>alert(1)</script>', 'a"onmouseover="alert(1)'):
             with self.subTest(language=language):
                 tree = render_tree(f'```{language}\nx < y\n```', 'comment')
                 self.assertIn('x < y', tree.find('.//pre/code').text)

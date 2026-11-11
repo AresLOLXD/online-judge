@@ -229,6 +229,12 @@ class TestAutolinkInjection(SimpleTestCase):
         self.assertIn('&amp;b=2', raw)
         self.assertNotIn('&amp;amp;', raw)
 
+    def test_entity_in_scheme_is_not_a_link(self):
+        """Not tied to a Scenario: a `&Tab;` entity inside a scheme is no link, the text stays visible."""
+        tree = self.render('<java&Tab;script:alert(1)>', 'comment')
+        self.assertEqual(tree.findall('.//a'), [])
+        self.assertIn('<java\tscript:alert(1)>', tree.text_content())
+
     def test_dangerous_schemes_are_dropped(self):
         sources = (
             '<javascript:alert(1)>',
@@ -1026,6 +1032,7 @@ class TestMath(SimpleTestCase):
         with settings_override, parser_patch:
             for source in (
                 '\\(' * 4096, '\\[' * 4096, '$$a ' * 2048, '~a ' * 2730, '$' * 8192, '~ ' * 4096,
+                '\\[a ' * 2048, '\\(a ' * 2730,
             ):
                 with self.subTest(source=source[:8]):
                     assert_fast(source, math_engine='svg')

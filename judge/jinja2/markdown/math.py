@@ -20,3 +20,23 @@ def math(md):
     ):
         group = name.removeprefix('math_') + '_formula'
         md.inline.register(name, pattern, _math_rule(token_type, group), before='escape', start_chars=start_chars)
+
+
+def _parse_latex(block, match, state):
+    source = match.group(0)
+    # Same split as mistune 0.8: the opening tag runs to the first `>`, the source ends at the last `<`.
+    tag_end = source.index('>')
+    state.append_token({
+        'type': 'latex',
+        'raw': source[tag_end + 1:source.rindex('<')],
+        'attrs': {'inline': 'inline' in source[:tag_end]},
+    })
+    # `$` stops before the newline; step over it so it does not become an empty paragraph.
+    return match.end() + 1
+
+
+def latex(md):
+    # Lazy and tied to a closing tag that ends its line, so two blocks stay separate and an unterminated tag does
+    # not match. The block may contain blank lines, which the HTML block rules would end on. It goes ahead of
+    # `raw_html`, the rule in BlockParser.DEFAULT_RULES that would otherwise take any line starting with a tag.
+    md.block.register('latex', r'^ {0,3}<latex(?=[\s>])[^>]*>[\s\S]*?</latex>[ \t]*$', _parse_latex, before='raw_html')

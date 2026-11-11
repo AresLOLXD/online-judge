@@ -47,7 +47,7 @@ Current state, observed in the code:
 2. **Renderer subclass plus small plugins, built per call as today.** An `HTMLRenderer` subclass carries the
    site rendering (links, headings, code, `<latex>`, math output); the `strikethrough`, `table` and `url`
    plugins of mistune provide the syntax; two small local plugins add math (inline rules) and the `<latex>`
-   block rule. The `Markdown` object is built per call like the current code. Task 1.2 measures the build
+   block rule. The `Markdown` object is built per call like the current code. Task 1.4 measures the build
    cost; only if it is over 5 ms is a cache keyed by (escape, nofollow, texoid, math, math_engine) added.
    Alternative: always cache; rejected, state (the Mathoid parser, Texoid client) lives in the renderer and a
    cache is only worth its complexity if measurement says so.
@@ -70,16 +70,21 @@ Current state, observed in the code:
    is no engine. A rule signature is `(inline, m, state)`. The rule must come before mistune's own backslash
    escape rule: checked on 3.4.0, `\(a_b\)` otherwise renders as `(a_b)`, and a rule registered only
    `before='emphasis'` still loses. The old code treated `$$` and `\[` as inline rules too, so a display
-   formula can sit in the middle of a paragraph; we keep that. Fallback if precedence still cannot be
+   formula can sit in the middle of a paragraph; we keep that. In 0.8 the escape rule ate the backslash, so
+   `\(..\)` and `\[..\]` never rendered as math on the live site; the port makes them work, and 1 of the 182 corpus
+   documents changes because of it. Fallback if precedence still cannot be
    reproduced: extract the math spans in a pre-pass, replace them by opaque placeholders that survive
-   escaping, and substitute the rendered math after parsing. The corpus check (task 4.2) decides if it is
-   needed. `mathoid.py` takes `escape` from `mistune.util`; note that it always escapes `&` (0.8's
-   `smart_amp` did not double-escape an existing entity), which only affects the fallback text.
+   escaping, and substitute the rendered math after parsing. Not needed: the corpus check (task 4.2) gave
+   identical math calls for 181 of 182 documents (the one difference is a `\[..\]` block that 0.8 ignored). Known
+   limit: a multi-line `$$` whose inner line starts with `#` is cut by the `#Title` heading rule (a `shortcut:`
+   comment in `math.py`). `mathoid.py` uses `safe_entity` from `mistune.util` (decode, then escape), which keeps
+   0.8's no-double-escape behavior for the fallback text.
 
 5. **`<latex>` as a block rule.** In 0.8 the tag was added to the private `_pre_tags` list so that a `<latex>`
    block may contain blank lines. In 3.x a local block rule registered before the HTML-block rule recognises
    `<latex ...>...</latex>` and the renderer sends it to Texoid when the style enables it; otherwise it falls
-   back to the normal raw-HTML path of the style (escaped or passed to bleach), as today.
+   back to the normal raw-HTML path of the style (escaped or passed to bleach), as today. `<latex>` inside list
+   items or block quotes stays raw HTML, and `</latex>` must end its line.
 
 6. **Tables:** the `table` plugin, with the renderer's table hook wrapping the output in
    `<div class="h-scrollable-table">` and `<table class="table">`.
@@ -96,9 +101,11 @@ Current state, observed in the code:
    (`^ {0,3}(?P<atx_1>#{1,6})(?!#+)(?P<atx_2>[ \t]*|[ \t]*[^#\s].*?)$`). Checked on 3.4.0: `#Title` and
    `##Sub` become headings, while fenced code (``` and ~~~), `<style>` and `<pre>` blocks, list items and
    quotes behave correctly because the parser already knows its context; `#include` outside any block is a
-   heading, as in 0.8. Rejected: a regex pre-pass over the source, which would also rewrite lines inside raw
+   heading, as in 0.8. `- #foo` and `> #foo` are now headings (0.8 showed text), a lone `#` is an empty heading,
+   and `##Sub##` keeps its closing `##`. Rejected: a regex pre-pass over the source, which would also rewrite lines inside raw
    HTML blocks (a staff `<style>` with `#a { color: red }` would break) and needs its own fence scanner. This
-   is the only compatibility code.
+   is the only syntax compatibility code; the renderer's `text` hook also decodes and re-escapes entities, so an
+   author's `&amp;` is not escaped twice in safe-mode styles.
 
 10. **Post-processing is untouched:** the HTML string still goes to lxml (camo, lazy loading, paragraph
     stripping) and then bleach with the same cleaner cache.
@@ -142,7 +149,12 @@ Current state, observed in the code:
   reports how many documents change so the deploy is not a surprise.
 - **A 3.x minor changes an extension API** -> pin `<4`, use documented hooks only, the suite and the corpus run
   are repeatable when `uv lock --upgrade` moves the version.
-- **Test timing flakiness**: the budget is 1 s against measured times under 0.05 s, a 20x margin.
+- **Test timing flakiness**: the budget is 1 s against a worst measured 0.16 s in the tests (unterminated
+  `\(` / `\[`) and 0.34 s in adversarial probes at 8192 characters, about a 3x margin.
+- **Longer inputs are not bounded**: the 1 s bound is for inputs up to 8192 characters; the `/widgets/preview/*`
+  endpoints and the profile, organization and ticket text fields accept longer texts, where unterminated `\(` /
+  `\[` / `<latex>` openers and mistune's own nested emphasis are superlinear (about 8 s at 64 KB for `\(`); master
+  was worse (cubic, 22 s at 8 KB). Follow-up: cap the length in the preview view and the forms.
 - **Stale HTML after deploy**: `{% cache %}` fragments (problems, blog, user "about" 24 h; contests and
   organizations 1 h) keep old HTML until they expire; comments are not fragment-cached. Acceptable; flushing
   the cache is optional and not part of the change.
@@ -153,7 +165,7 @@ Current state, observed in the code:
 
 1. Merge to `master` after the suite (Python 3.13 and 3.14), flake8, the Scenario-to-test check and the corpus
    report pass.
-2. Deploy with the normal `./scripts/update` (backup, image rebuild from the new `uv.lock`, migrate: no
-   migrations here, start). No `dmoj-docker` change.
+2. Deploy with the normal `./scripts/update` (image rebuild from the new `uv.lock`, restart, migrate: no
+   migrations here; `./scripts/update` does not back up the database, run the backup script first if wanted). No `dmoj-docker` change.
 3. Rollback: revert the merge commit, push, run `./scripts/update` again. No data was changed, so nothing
    has to be restored.

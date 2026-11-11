@@ -15,7 +15,8 @@ not post-processed by bleach: `default`, `comment`, `self-description`, `organiz
 
 ### Requirement: Rendering time is bounded
 The filter SHALL render any input of up to the comment length limit (8192 characters) in at most 1 second, for
-every style, including inputs built to trigger worst-case parsing.
+every style, including inputs built to trigger worst-case parsing. Inputs longer than the limit (previews, profile,
+organization and ticket texts) are not bounded by this requirement.
 
 #### Scenario: Repeated unterminated autolink openers
 - **WHEN** `<http://` repeated up to 8192 characters is rendered with the `comment` style

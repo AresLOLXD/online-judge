@@ -24,11 +24,12 @@ must move to the maintained major version.
   because the code is written and measured against 3.4.0 (the advisories are fixed from 3.3.0).
 - Rewrite the rendering code on the mistune 3 plugin API: `judge/jinja2/markdown/__init__.py`
   (renderer, inline rules, options) and `judge/jinja2/markdown/math.py` (math), and adapt the one
-  `mistune` import in `judge/utils/mathoid.py` (`escape`). The public entry point, the Jinja filter
+  `mistune` import in `judge/utils/mathoid.py` (`escape` becomes `safe_entity`). The public entry point, the Jinja filter
   `markdown(value, style, math_engine, lazy_load, strip_paragraphs)`, and the style settings
   (`MARKDOWN_STYLES`) keep their signature and meaning.
 - Keep these site features: math (`~x~` and `\(x\)` inline, `$$x$$` and `\[x\]` display, rendered through
-  Mathoid, falling back to the escaped `\(..\)` / `\[..\]` text), `<latex>` blocks through Texoid, tables
+  Mathoid, falling back to the escaped `\(..\)` / `\[..\]` text; `\(x\)` and `\[x\]` are newly working, not kept: 0.8's
+  escape rule ate the backslash), `<latex>` blocks through Texoid, tables
   wrapped in `div.h-scrollable-table`, `rel="nofollow"` except for `NOFOLLOW_EXCLUDED` hosts, heading level
   +2, syntax highlighting of fenced code with a language, safe-mode escaping per style, bleach per style,
   camo, lazy loading of images, `strip_paragraphs`, bare-URL autolinks and `~~strikethrough~~`.
@@ -70,7 +71,8 @@ must move to the maintained major version.
   `./scripts/update` rebuilds the image with the new lock; no change in `dmoj-docker` is expected. HTML kept
   in `{% cache %}` fragments (problems, blog posts and user "about" 24 h, contests and organizations 1 h)
   is replaced as the entries expire. Rollback is reverting the commit and redeploying; no data is changed.
-- Out of scope: footnotes (no use found), a compatibility layer for other 0.8 quirks, a URL-scheme
+- Out of scope: an input length cap for the preview endpoints and the unbounded `about` and ticket fields (the 1 s
+  bound is for 8192 characters; follow-up), footnotes (no use found), a compatibility layer for other 0.8 quirks, a URL-scheme
   allowlist of our own (the protocol blocking built into mistune 3 is used and checked), new Markdown
   plugins nobody asked for, per-document approval of rendering differences, the bleach allowlists, the
   Mathoid/Texoid/camo services themselves, the `reference` filter, the editor (`martor`) and the other

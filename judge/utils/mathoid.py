@@ -6,7 +6,7 @@ import requests
 from django.conf import settings
 from django.core.cache import caches
 from django.utils.html import format_html
-from mistune import escape
+from mistune.util import safe_entity
 
 from judge.utils.file_cache import HashFileCache
 from judge.utils.unicode import utf8bytes, utf8text
@@ -154,8 +154,8 @@ class MathoidMathParser(object):
 
     def display_math(self, math):
         math = format_math(math)
-        return self.get_result(r'\displaystyle ' + math) or r'\[%s\]' % escape(math)
+        return self.get_result(r'\displaystyle ' + math) or r'\[%s\]' % safe_entity(math)
 
     def inline_math(self, math):
         math = format_math(math)
-        return self.get_result(math) or r'\(%s\)' % escape(math)
+        return self.get_result(math) or r'\(%s\)' % safe_entity(math)

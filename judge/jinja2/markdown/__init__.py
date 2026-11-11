@@ -1,5 +1,4 @@
 import logging
-import re
 from html import unescape
 from urllib.parse import urlparse
 
@@ -10,13 +9,18 @@ from django.conf import settings
 from lxml import html
 from lxml.etree import ParserError, XMLSyntaxError
 from markupsafe import Markup
+from mistune.plugins.formatting import strikethrough
+from mistune.plugins.table import table
+from mistune.plugins.url import url
+from mistune.util import escape as escape_html, safe_entity
 
 from judge.highlight_code import highlight_code
 from judge.jinja2.markdown.lazy_load import lazy_load as lazy_load_processor
-from judge.jinja2.markdown.math import MathInlineGrammar, MathInlineLexer, MathRenderer
 from judge.utils.camo import client as camo_client
+from judge.utils.mathoid import MathoidMathParser
 from judge.utils.texoid import TEXOID_ENABLED, TexoidRenderer
 from .bleach_whitelist import all_styles, mathml_attrs, mathml_tags
+from .math import latex as latex_plugin, math as math_plugin
 from .. import registry
 
 logger = logging.getLogger('judge.html')
@@ -24,92 +28,97 @@ logger = logging.getLogger('judge.html')
 NOFOLLOW_WHITELIST = settings.NOFOLLOW_EXCLUDED
 
 
-class CodeSafeInlineGrammar(mistune.InlineGrammar):
-    double_emphasis = re.compile(r'^\*{2}([\s\S]+?)()\*{2}(?!\*)')  # **word**
-    emphasis = re.compile(r'^\*((?:\*\*|[^\*])+?)()\*(?!\*)')  # *word*
+class AwesomeRenderer(mistune.HTMLRenderer):
+    def __init__(self, escape: bool = True, nofollow: bool = True, math: bool = False,
+                 math_engine: str | None = None, texoid: bool = False):
+        super().__init__(escape=escape)
+        self.nofollow = nofollow
+        self.texoid = TexoidRenderer() if texoid else None
+        self.mathoid = MathoidMathParser(math_engine or 'svg') if math else None
+
+    def inline_math(self, formula: str) -> str:
+        if self.mathoid is None or not formula:
+            return r'\(' + safe_entity(formula) + r'\)'
+        return self.mathoid.inline_math(formula)
+
+    def display_math(self, formula: str) -> str:
+        if self.mathoid is None or not formula:
+            return r'\[' + safe_entity(formula) + r'\]'
+        return self.mathoid.display_math(formula)
+
+    def latex(self, source: str, inline: bool = False) -> str:
+        source = unescape(source)
+        result = self.texoid.get_result(source)
+        if not result:
+            return '<pre>' + escape_html(source) + '</pre>'
+        if 'error' in result:
+            return '<pre>' + escape_html(result['error']) + '</pre>'
+        img = ('<img src="%(svg)s" onerror="this.src=\'%(png)s\';this.onerror=null" '
+               'class="tex-full" width="%(width)s" height="%(height)s">') % {
+            'svg': result['svg'], 'png': result['png'],
+            'width': result['meta']['width'], 'height': result['meta']['height'],
+        }
+        style = ['max-width: 100%',
+                 'height: %s' % result['meta']['height'],
+                 'max-height: %s' % result['meta']['height'],
+                 'width: %s' % result['meta']['width']]
+        tag = 'span' if inline else 'div'
+        if not inline:
+            style.append('text-align: center')
+        return '<%s style="%s">%s</%s>' % (tag, ';'.join(style), img, tag)
+
+    def text(self, text):
+        # Decode then re-escape, so that an entity typed by the author is not escaped twice
+        # (mistune only does this when escape is off); the result is escaped either way.
+        return safe_entity(text)
+
+    def _needs_nofollow(self, href):
+        try:
+            host = urlparse(href).netloc
+        except ValueError:
+            return True
+        return bool(host) and host not in NOFOLLOW_WHITELIST
+
+    def link(self, text, url, title=None):
+        attrs = {'href': self.sanitize_url(url)}
+        if title:
+            attrs['title'] = title
+        if self.nofollow and self._needs_nofollow(attrs['href']):
+            attrs['rel'] = 'nofollow'
+        return '<a' + self.render_attrs(attrs) + '>' + text + '</a>'
+
+    def heading(self, text, level, **attrs):
+        return super().heading(text, min(level + 2, 6), **attrs)
+
+    def block_code(self, code, info=None):
+        lang = safe_entity(info.strip()).split(None, 1)[0] if info and info.strip() else None
+        if lang:
+            return highlight_code(code, lang)
+        return super().block_code(code, info)
 
 
-class AwesomeInlineGrammar(MathInlineGrammar, CodeSafeInlineGrammar):
-    pass
+class AwesomeBlockParser(mistune.BlockParser):
+    SPECIFICATION = {
+        **mistune.BlockParser.SPECIFICATION,
+        # mistune 3 requires whitespace after the hashes; mistune 0.8 did not, and existing content relies on it.
+        'atx_heading': r'^ {0,3}(?P<atx_1>#{1,6})(?!#+)(?P<atx_2>[ \t]*|[ \t]*[^#\s].*?)$',
+    }
 
 
-class AwesomeInlineLexer(MathInlineLexer, mistune.InlineLexer):
-    grammar_class = AwesomeInlineGrammar
+def render_table(renderer, text):
+    return '<div class="h-scrollable-table">\n<table class="table">\n' + text + '</table>\n</div>\n'
 
 
-class AwesomeRenderer(MathRenderer, mistune.Renderer):
-    def __init__(self, *args, **kwargs):
-        self.nofollow = kwargs.pop('nofollow', True)
-        self.texoid = TexoidRenderer() if kwargs.pop('texoid', False) else None
-        super(AwesomeRenderer, self).__init__(*args, **kwargs)
-
-    def _link_rel(self, href):
-        if href:
-            try:
-                url = urlparse(href)
-            except ValueError:
-                return ' rel="nofollow"'
-            else:
-                if url.netloc and url.netloc not in NOFOLLOW_WHITELIST:
-                    return ' rel="nofollow"'
-        return ''
-
-    def autolink(self, link, is_email=False):
-        text = mistune.escape(link)
-        link = mistune.escape_link(link)
-        if is_email:
-            link = 'mailto:%s' % link
-        return '<a href="%s"%s>%s</a>' % (link, self._link_rel(link), text)
-
-    def table(self, header, body):
-        return (
-            '<div class="h-scrollable-table">\n<table class="table">\n<thead>%s</thead>\n'
-            '<tbody>\n%s</tbody>\n</table>\n</div>\n'
-        ) % (header, body)
-
-    def link(self, link, title, text):
-        link = mistune.escape_link(link)
-        if not title:
-            return '<a href="%s"%s>%s</a>' % (link, self._link_rel(link), text)
-        title = mistune.escape(title, quote=True)
-        return '<a href="%s" title="%s"%s>%s</a>' % (link, title, self._link_rel(link), text)
-
-    def block_code(self, code, lang=None):
-        if not lang:
-            return '\n<pre><code>%s</code></pre>\n' % mistune.escape(code).rstrip()
-        return highlight_code(code, lang)
-
-    def block_html(self, html):
-        if self.texoid and html.startswith('<latex'):
-            attr = html[6:html.index('>')]
-            latex = html[html.index('>') + 1:html.rindex('<')]
-            latex = unescape(latex)
-            result = self.texoid.get_result(latex)
-            if not result:
-                return '<pre>%s</pre>' % mistune.escape(latex, smart_amp=False)
-            elif 'error' not in result:
-                img = ('''<img src="%(svg)s" onerror="this.src='%(png)s';this.onerror=null"'''
-                       'class="tex-full" width="%(width)s" height="%(height)s"%(tail)s>') % {
-                    'svg': result['svg'], 'png': result['png'],
-                    'width': result['meta']['width'], 'height': result['meta']['height'],
-                    'tail': ' /' if self.options.get('use_xhtml') else '',
-                }
-                style = ['max-width: 100%',
-                         'height: %s' % result['meta']['height'],
-                         'max-height: %s' % result['meta']['height'],
-                         'width: %s' % result['meta']['width']]
-                if 'inline' in attr:
-                    tag = 'span'
-                else:
-                    tag = 'div'
-                    style += ['text-align: center']
-                return '<%s style="%s">%s</%s>' % (tag, ';'.join(style), img, tag)
-            else:
-                return '<pre>%s</pre>' % mistune.escape(result['error'], smart_amp=False)
-        return super(AwesomeRenderer, self).block_html(html)
-
-    def header(self, text, level, *args, **kwargs):
-        return super(AwesomeRenderer, self).header(text, level + 2, *args, **kwargs)
+def _create_markdown(escape: bool, nofollow: bool = True, math: bool = False,
+                     math_engine: str | None = None, texoid: bool = False) -> mistune.Markdown:
+    renderer = AwesomeRenderer(escape=escape, nofollow=nofollow, math=math, math_engine=math_engine, texoid=texoid)
+    plugins = [strikethrough, table, url, math_plugin]
+    if texoid:
+        plugins.append(latex_plugin)
+    markdown = mistune.Markdown(renderer=renderer, block=AwesomeBlockParser(), plugins=plugins)
+    # The table plugin registers its own hook when applied, so ours goes after it.
+    markdown.renderer.register('table', render_table)
+    return markdown
 
 
 cleaner_cache = {}
@@ -171,7 +180,7 @@ def markdown(value, style, math_engine=None, lazy_load=False, strip_paragraphs=F
     escape = styles.get('safe_mode', True)
     nofollow = styles.get('nofollow', True)
     texoid = TEXOID_ENABLED and styles.get('texoid', False)
-    math = getattr(settings, 'MATHOID_URL') and styles.get('math', False)
+    math = bool(settings.MATHOID_URL) and styles.get('math', False)
     bleach_params = styles.get('bleach', {})
 
     post_processors = []
@@ -180,11 +189,7 @@ def markdown(value, style, math_engine=None, lazy_load=False, strip_paragraphs=F
     if lazy_load:
         post_processors.append(lazy_load_processor)
 
-    renderer = AwesomeRenderer(escape=escape, nofollow=nofollow, texoid=texoid,
-                               math=math and math_engine is not None, math_engine=math_engine)
-    markdown = mistune.Markdown(renderer=renderer, inline=AwesomeInlineLexer,
-                                parse_block_html=1, parse_inline_html=1)
-    result = markdown(value)
+    result = _create_markdown(escape, nofollow, math and math_engine is not None, math_engine, texoid)(value)
 
     if post_processors or strip_paragraphs:
         tree = fragments_to_tree(result)

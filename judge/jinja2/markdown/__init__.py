@@ -16,7 +16,9 @@ from mistune.util import safe_entity
 from judge.highlight_code import highlight_code
 from judge.jinja2.markdown.lazy_load import lazy_load as lazy_load_processor
 from judge.utils.camo import client as camo_client
+from judge.utils.mathoid import MathoidMathParser
 from .bleach_whitelist import all_styles, mathml_attrs, mathml_tags
+from .math import math as math_plugin
 from .. import registry
 
 logger = logging.getLogger('judge.html')
@@ -25,9 +27,21 @@ NOFOLLOW_WHITELIST = settings.NOFOLLOW_EXCLUDED
 
 
 class AwesomeRenderer(mistune.HTMLRenderer):
-    def __init__(self, escape=True, nofollow=True):
+    def __init__(self, escape: bool = True, nofollow: bool = True, math: bool = False,
+                 math_engine: str | None = None):
         super().__init__(escape=escape)
         self.nofollow = nofollow
+        self.mathoid = MathoidMathParser(math_engine or 'svg') if math else None
+
+    def inline_math(self, formula: str) -> str:
+        if self.mathoid is None or not formula:
+            return r'\(' + safe_entity(formula) + r'\)'
+        return self.mathoid.inline_math(formula)
+
+    def display_math(self, formula: str) -> str:
+        if self.mathoid is None or not formula:
+            return r'\[' + safe_entity(formula) + r'\]'
+        return self.mathoid.display_math(formula)
 
     def text(self, text):
         # Decode then re-escape, so that an entity typed by the author is not escaped twice
@@ -71,9 +85,11 @@ def render_table(renderer, text):
     return '<div class="h-scrollable-table">\n<table class="table">\n' + text + '</table>\n</div>\n'
 
 
-def _create_markdown(escape, nofollow=True):
-    markdown = mistune.Markdown(renderer=AwesomeRenderer(escape=escape, nofollow=nofollow),
-                                block=AwesomeBlockParser(), plugins=[strikethrough, table, url])
+def _create_markdown(escape: bool, nofollow: bool = True, math: bool = False,
+                     math_engine: str | None = None) -> mistune.Markdown:
+    renderer = AwesomeRenderer(escape=escape, nofollow=nofollow, math=math, math_engine=math_engine)
+    markdown = mistune.Markdown(renderer=renderer, block=AwesomeBlockParser(),
+                                plugins=[strikethrough, table, url, math_plugin])
     # The table plugin registers its own hook when applied, so ours goes after it.
     markdown.renderer.register('table', render_table)
     return markdown
@@ -137,6 +153,7 @@ def markdown(value, style, math_engine=None, lazy_load=False, strip_paragraphs=F
     styles = settings.MARKDOWN_STYLES.get(style, settings.MARKDOWN_DEFAULT_STYLE)
     escape = styles.get('safe_mode', True)
     nofollow = styles.get('nofollow', True)
+    math = bool(settings.MATHOID_URL) and styles.get('math', False)
     bleach_params = styles.get('bleach', {})
 
     post_processors = []
@@ -145,7 +162,7 @@ def markdown(value, style, math_engine=None, lazy_load=False, strip_paragraphs=F
     if lazy_load:
         post_processors.append(lazy_load_processor)
 
-    result = _create_markdown(escape, nofollow)(value)
+    result = _create_markdown(escape, nofollow, math and math_engine is not None, math_engine)(value)
 
     if post_processors or strip_paragraphs:
         tree = fragments_to_tree(result)

@@ -43,7 +43,7 @@ Covers: markdown-rendering / Tables are scrollable / Table wrapper
 
 ## 3. Math and LaTeX blocks
 
-- [ ] 3.1 Write the tests first: `TestMath` (four delimiters with a patched `MathoidMathParser` and `override_settings(MATHOID_URL=...)`, formulas with `_`, `*` and `\\`, tilde math next to `~~x~~`, delimiters inside code, no math engine fallback) and `TestLatexBlocks` (success and error with a patched `TexoidRenderer` and `TEXOID_ENABLED`, including blank lines inside the block); run them in the baseline worktree of 1.1 and record which pass and which fail.
+- [x] 3.1 Write the tests first: `TestMath` (four delimiters with a patched `MathoidMathParser` and `override_settings(MATHOID_URL=...)`, formulas with `_`, `*` and `\\`, tilde math next to `~~x~~`, delimiters inside code, no math engine fallback) and `TestLatexBlocks` (success and error with a patched `TexoidRenderer` and `TEXOID_ENABLED`, including blank lines inside the block); run them in the baseline worktree of 1.1 and record which pass and which fail.
 - [ ] 3.2 Implement the math inline rules (`~x~` guarded against `~~`, `\(x\)`, `$$x$$`, `\[x\]`) registered before the escape rule, and the renderer output (math service or the escaped `\(..\)` / `\[..\]` fallback); if the inline API still cannot reproduce the delimiter precedence, use the placeholder pre-pass of design decision 4 instead; update the `escape` import in `judge/utils/mathoid.py`; verify `TestMath` passes.
 - [ ] 3.3 Implement the `<latex>` block rule and its Texoid rendering (and the raw-HTML fallback when the style does not enable Texoid); verify `TestLatexBlocks` passes.
 

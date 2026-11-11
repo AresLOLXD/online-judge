@@ -917,10 +917,14 @@ def math_stubs():
     )
 
 
-def render_math(source, style='comment', **kwargs):
+def render_math_raw(source, style='comment', **kwargs):
     settings_override, parser_patch = math_stubs()
     with settings_override, parser_patch:
-        return fragments_to_tree(markdown(source, style, math_engine='svg', **kwargs))
+        return str(markdown(source, style, math_engine='svg', **kwargs))
+
+
+def render_math(source, style='comment', **kwargs):
+    return fragments_to_tree(render_math_raw(source, style, **kwargs))
 
 
 class TestMath(SimpleTestCase):
@@ -946,6 +950,15 @@ class TestMath(SimpleTestCase):
                 self.assertEqual(tree.findall('.//em') + tree.findall('.//strong'), [])
                 self.assertEqual(tree.text_content().strip(), formula)
 
+    def test_math_is_protected_from_emphasis(self):
+        """Not tied to a Scenario: a formula with a real emphasis pair inside reaches the service unchanged."""
+        for source, formula in (('$$a*b*c$$', 'a*b*c'), ('~a_b_c~', 'a_b_c')):
+            with self.subTest(source=source):
+                tree = render_math(source)
+                self.assertEqual([call[1] for call in RecordingMath.calls], [formula])
+                self.assertEqual(tree.findall('.//em') + tree.findall('.//strong'), [])
+                self.assertEqual(tree.text_content().strip(), formula)
+
     def test_tilde_math_next_to_strikethrough(self):
         """Scenario: Tilde math next to strikethrough"""
         tree = render_math('~a~ and ~~b~~')
@@ -954,13 +967,24 @@ class TestMath(SimpleTestCase):
 
     def test_math_delimiters_inside_code(self):
         """Scenario: Math delimiters inside code"""
-        tree = render_math('`~a~`\n\n```\n$$a$$\n```')
+        raw = render_math_raw('`~a<b~`\n\n```\n$$a&b$$\n```')
         self.assertEqual(RecordingMath.calls, [])
-        self.assertEqual([code.text.strip() for code in tree.findall('.//code')], ['~a~', '$$a$$'])
+        self.assertIn('~a&lt;b~', raw)
+        self.assertIn('$$a&amp;b$$', raw)
+        tree = fragments_to_tree(raw)
+        self.assertEqual([code.text.strip() for code in tree.findall('.//code')], ['~a<b~', '$$a&b$$'])
 
     def test_math_without_a_math_engine(self):
         """Scenario: Math without a math engine"""
         raw = str(markdown('~a<b~ $$a<b$$', 'comment'))
+        self.assertIn(r'\(a&lt;b\)', raw)
+        self.assertIn(r'\[a&lt;b\]', raw)
+
+        # An engine name without a math service (MATHOID_URL false) gives the same fallback text.
+        settings_override, parser_patch = math_stubs()
+        with parser_patch, override_settings(MATHOID_URL=False):
+            raw = str(markdown('~a<b~ $$a<b$$', 'comment', math_engine='svg'))
+        self.assertEqual(RecordingMath.calls, [])
         self.assertIn(r'\(a&lt;b\)', raw)
         self.assertIn(r'\[a&lt;b\]', raw)
 
@@ -986,11 +1010,15 @@ class TestMath(SimpleTestCase):
 
     def test_unpaired_delimiters_stay_literal(self):
         """Not tied to a Scenario: single or unpaired delimiters are plain text."""
-        for source in ('a ~ b', '$$a$', r'\~a\~'):
+        for source, text in (('a ~ b', 'a ~ b'), ('$$a$', '$$a$'), (r'\~a\~', '~a~')):
             with self.subTest(source=source):
-                render_math(source)
+                tree = render_math(source)
                 self.assertEqual(RecordingMath.calls, [])
-        self.assertIsInstance(markdown('~a~~b~', 'comment'), str)
+                self.assertEqual(tree.text_content().strip(), text)
+        # `~a~~b~` is not specified: it only has to render and keep both letters visible.
+        raw = render_math_raw('~a~~b~')
+        text = fragments_to_tree(raw).text_content()
+        self.assertTrue('a' in text and 'b' in text, raw)
 
     def test_unterminated_math_openers_are_fast(self):
         """Not tied to a Scenario: repeated unterminated math openers render within the time budget."""
@@ -1039,21 +1067,25 @@ class TestLatexBlocks(SimpleTestCase):
                 self.assertEqual(len(tree.findall('.//img')), 1)
                 self.assertEqual(len(images), 1)
                 self.assertEqual((images[0].get('width'), images[0].get('height')), ('10px', '5px'))
+                self.assertEqual(images[0].get('src'), '/s.svg')
                 self.assertEqual(RecordingTexoid.calls, ['x^2'])
 
     def test_latex_service_error(self):
         """Scenario: LaTeX service error"""
-        raw = str(render_latex('<latex>x^2</latex>', {'error': 'bad <tex>'}))
-        self.assertIn('bad &lt;tex&gt;', raw)
-        self.assertEqual([pre.text for pre in fragments_to_tree(raw).findall('.//pre')], ['bad <tex>'])
+        raw = str(render_latex('<latex>x^2</latex>', {'error': 'bad <tex> &'}))
+        self.assertIn('<pre>bad &lt;tex&gt; &amp;</pre>', raw)
+        self.assertEqual([pre.text for pre in fragments_to_tree(raw).findall('.//pre')], ['bad <tex> &'])
 
-        tree = fragments_to_tree(render_latex('<latex>x^2</latex>', None))
-        self.assertEqual([pre.text for pre in tree.findall('.//pre')], ['x^2'])
+        # No result: the service receives the source with its entities decoded and the pre shows it escaped.
+        raw = str(render_latex('<latex>a &lt; b &amp; c</latex>', None))
+        self.assertEqual(RecordingTexoid.calls, ['a < b & c'])
+        self.assertIn('<pre>a &lt; b &amp; c</pre>', raw)
+        self.assertEqual([pre.text for pre in fragments_to_tree(raw).findall('.//pre')], ['a < b & c'])
 
     def test_latex_block_with_blank_lines(self):
         """Not tied to a Scenario: a block with blank lines inside is one block."""
         render_latex('<latex>\na\n\nb\n</latex>', LATEX_IMAGE)
-        self.assertEqual(RecordingTexoid.calls, ['\na\n\nb\n'])
+        self.assertEqual([call.strip() for call in RecordingTexoid.calls], ['a\n\nb'])
 
     def test_two_latex_blocks_stay_separate(self):
         """Not tied to a Scenario: two blocks in one document are two images."""
@@ -1064,6 +1096,7 @@ class TestLatexBlocks(SimpleTestCase):
     def test_unterminated_latex_does_not_swallow_the_rest(self):
         """Not tied to a Scenario: an unterminated block neither raises nor hides the text after it."""
         self.assertIn('<em>me</em>', render_latex('<latex>x\n\nafter *me*', LATEX_IMAGE))
+        self.assertEqual(RecordingTexoid.calls, [])
 
     def test_latex_is_plain_text_in_a_style_without_texoid(self):
         """Not tied to a Scenario: a style that does not enable LaTeX shows the tag as text."""

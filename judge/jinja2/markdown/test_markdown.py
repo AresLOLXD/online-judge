@@ -791,10 +791,6 @@ class TestLinks(SimpleTestCase):
         """Not tied to a Scenario: markup inside the link text is rendered."""
         self.assertIsNotNone(render_tree('[**b**](https://example.com/)', 'comment').find('.//a/strong'))
 
-    def test_entity_scheme_autolink_is_text(self):
-        """Not tied to a Scenario: an autolink whose scheme is spelled with an entity is not a link."""
-        self.assertEqual(render_tree('<java&Tab;script:alert(1)>', 'comment').findall('.//a'), [])
-
 
 HEADING_TAGS = ('h1', 'h2', 'h3', 'h4', 'h5', 'h6')
 

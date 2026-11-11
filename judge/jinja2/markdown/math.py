@@ -12,6 +12,10 @@ def math(md):
     # backslash of `\(` and `\[`.
     # shortcut: a multi-line `$$ ... $$` whose inner line starts with `#` is cut by the relaxed `#Title` heading
     # rule, accepted limit.
+    # shortcut: an unterminated `\(`, `\[` or `<latex>` opener is rescanned to the end of the input, so the cost grows
+    # quadratically (about 0.15 s at 8192 characters, about 8 s at 64 KB). The `/widgets/preview/*` endpoints and the
+    # unbounded profile, organization and ticket text fields accept longer inputs: cap their length (follow-up) or
+    # bound the patterns.
     for name, pattern, token_type, start_chars in (
         ('math_dollar', r'\$\$(?P<dollar_formula>[\s\S]+?)\$\$', 'display_math', '$'),
         ('math_bracket', r'\\\[(?P<bracket_formula>[\s\S]+?)\\\]', 'display_math', '\\'),
@@ -39,4 +43,6 @@ def latex(md):
     # Lazy and tied to a closing tag that ends its line, so two blocks stay separate and an unterminated tag does
     # not match. The block may contain blank lines, which the HTML block rules would end on. It goes ahead of
     # `raw_html`, the rule in BlockParser.DEFAULT_RULES that would otherwise take any line starting with a tag.
+    # shortcut: an unterminated `<latex>` is rescanned to the end of the input (quadratic, see `math`), cap the input
+    # length or bound the pattern when longer texts are accepted.
     md.block.register('latex', r'^ {0,3}<latex(?=[\s>])[^>]*>[\s\S]*?</latex>[ \t]*$', _parse_latex, before='raw_html')
